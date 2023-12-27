@@ -1,10 +1,9 @@
 const std = @import("std");
 
 // ====================================================================
-// The target definition and gba.ld are from @wendigojaeger's project
+// The target definition and gba.ld are from @wendigojaeger's project.
 // https://github.com/wendigojaeger/ZigGBA
 //
-// Thank you so much for the sharing!
 const gba_thumb_target = blk: {
     var target = std.zig.CrossTarget {
         .cpu_arch = std.Target.Cpu.Arch.thumb,
@@ -23,6 +22,21 @@ const GBALinkerScript = libRoot() ++ "/src/gba.ld";
 
 // ====================================================================
 
+fn addDemo(b: *std.Build,
+           target: std.zig.CrossTarget,
+           optimize: std.builtin.OptimizeMode,
+           executable: []const u8,
+           sourceRoot: []const u8) void {
+    const demo = b.addExecutable(.{
+        .name = executable,
+        .root_source_file = .{ .path = sourceRoot },
+        .target = target,
+        .optimize = optimize,
+    });
+    demo.setLinkerScriptPath(std.build.FileSource { .path = GBALinkerScript });
+    b.installArtifact(demo);
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
@@ -36,9 +50,8 @@ pub fn build(b: *std.Build) void {
     lib.setLinkerScriptPath(std.build.FileSource { .path = GBALinkerScript });
     b.installArtifact(lib);
 
-    // TODO Examples are built as .gba files, which suppose to be
-    // executed on a GBA device or emulator. Thus, we don't
-    // support running via `zig build run ...'.
+    // All demos - Note that all executables must be run via emulator.
+    addDemo(b, gba_thumb_target, optimize, "demo.elf", "demo/first.zig");
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
