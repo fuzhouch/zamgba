@@ -26,7 +26,7 @@ ENTRY(__text_start)
 OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
 
-__text_start = ORIGIN(rom);
+__text_start = ORIGIN(pakrom);
 __eheap_end = ORIGIN(ewram) + LENGTH(ewram);
 __iwram_start = ORIGIN(iwram);
 __iwram_top = ORIGIN(iwram) + LENGTH(iwram);
@@ -44,23 +44,23 @@ SECTIONS
         KEEP(*(.gbamain))
         *(EXCLUDE_FILE (*.iwram*) .text*)
         . ALIGN(4);
-    } >rom = 0xff
+    } >pakrom = 0xff
 
     __text_end = .;
     .fini :
     {
         KEEP (*(.fini))
         . = ALIGN(4);
-    } >rom =0
+    } >pakrom =0
 
     .rodata : {
         *(.rodata*)
         . = ALIGN(4);
-    } >rom = 0xff
+    } >pakrom = 0xff
 
-    .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >rom
+    .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >pakrom
     __exidx_start = .;
-    .ARM.exidx   : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } >rom
+    .ARM.exidx   : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } >pakrom
     __exidx_end = .;
 
     __data_lma = .;
