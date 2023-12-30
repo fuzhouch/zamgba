@@ -1,10 +1,24 @@
 /*
- The linker script is copied from https://github.com/wendigojaeger/ZigGBA
+ * The linker script is originated from ZigGBA project but modified
+ * during study.
+ *
+ * REF: https://github.com/wendigojaeger/ZigGBA
+ */
+
+/*
+ * Memory layout is based on tonc:
+ * REF: https://www.coranac.com/tonc/text/hardware.htm#sec-memory
  */
 MEMORY {
-    rom	: ORIGIN = 0x08000000, LENGTH = 32M
-    iwram	: ORIGIN = 0x03000000, LENGTH = 32K
-    ewram	: ORIGIN = 0x02000000, LENGTH = 256K
+    system  : ORIGIN = 0x00000000, LENGTH = 16K
+    ewram   : ORIGIN = 0x02000000, LENGTH = 256K
+    iwram   : ORIGIN = 0x03000000, LENGTH = 32K
+    ioram   : ORIGIN = 0x04000000, LENGTH = 1K
+    palram  : ORIGIN = 0x05000000, LENGTH = 1K
+    vram    : ORIGIN = 0x06000000, LENGTH = 1K
+    oam     : ORIGIN = 0x07000000, LENGTH = 1K
+    pakrom  : ORIGIN = 0x08000000, LENGTH = 32M
+    cartram : ORIGIN = 0x0E000000, LENGTH = 64K
 }
 
 ENTRY(__text_start)

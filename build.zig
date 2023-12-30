@@ -51,7 +51,8 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(lib);
 
     // All demos - Note that all executables must be run via emulator.
-    addDemo(b, gba_thumb_target, optimize, "demo.elf", "demo/first.zig");
+    addDemo(b, gba_thumb_target, optimize, "first.elf", "demo/first.zig");
+    addDemo(b, gba_thumb_target, optimize, "first.c.elf", "demo/first.c");
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
