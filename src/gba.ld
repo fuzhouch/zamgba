@@ -26,11 +26,9 @@ MEMORY {
     cartram : ORIGIN = 0x0E000000, LENGTH = 64K
 }
 
-/* Copied from devkitpro/gba_cart.ld */
-ENTRY(__text_start)
-
 OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
+ENTRY(_start)
 
 __text_start  = ORIGIN(pakrom);
 __eheap_end   = ORIGIN(ewram) + LENGTH(ewram);
@@ -42,11 +40,11 @@ __irq_flags   = 0x03007ff8;
 
 SECTIONS
 {
-    . = __text_start;
     .text :
     {
-        *(.text.start)
+        *(.text._start)
         *(.text .text.*)
+        . = ALIGN(4);
     } >pakrom
 }
 

@@ -40,29 +40,13 @@ pub const MemorySections = struct {
 pub const SCREEN_WIDTH_PIXELS = 240;
 pub const SCREEN_HEIGHT_PIXELS = 160;
 
-// GBAMain is from https://github.com/wendigojaeger/ZigGBA
-
-fn GBAZigStartup() noreturn
-{
-    if (@hasDecl(root, "main")) {
-        root.main();
-    } else {
-        while(true) {}
-    }
-}
-
-export fn GBAMain() linksection(".gbamain") noreturn {
+export fn _start() linksection(".text._start") void {
     asm volatile (
         \\.arm
         \\.cpu arm7tdmi
-        \\mov r0, #0x04000000
-        \\str r0, [r0, #0x208]
-        \\
-        \\mov r0, #0x12
-        \\msr cpsr, r0
-        \\ldr sp, =__sp_irq
-        \\add r0, pc, #1
-        \\bx r0
+        \\b 1f
+        \\.space 0xE0
+        \\1:
+        \\b 1b
     );
-    GBAZigStartup();
 }
