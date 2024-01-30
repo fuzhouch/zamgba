@@ -41,12 +41,44 @@ pub const SCREEN_WIDTH_PIXELS = 240;
 pub const SCREEN_HEIGHT_PIXELS = 160;
 
 export fn _start() linksection(".text._start") void {
-    asm volatile (
-        \\.arm
-        \\.cpu arm7tdmi
-        \\b 1f
-        \\.space 0xE0
-        \\1:
-        \\b 1b
-    );
+    // TODO: Reference to rust-gba. We should clear bss and do
+    // initialization here, then jump to main.
+    //
+    if (@hasDecl(root, "main")) {
+        root.main();
+    } else {
+        while (true) {}
+    }
 }
+
+// Explain the meaning
+// Line 1: Set register base to ioram
+// Line 3: Switch to IRQ mode
+// Line 5: Set IRQ Stack
+// Line 6: Switch to System Mode
+// Line 8: Set user stack
+// Line 9: Load reset address
+// Line 10: Jump to _start() for execution.
+comptime {
+    asm (
+        \\.section .text.boot
+        \\.global _boot
+        \\.cpu arm7tdmi
+        \\.align
+        \\.arm
+        \\_boot:
+        \\     mov r0, #0x04000000
+        \\     str r0, [r0, #0x208]
+        \\     mov r0, #0x12
+        \\     msr cpsr, r0
+        \\     ldr sp, =__sp_irq
+        \\     mov r0, #0x1f
+        \\     msr cpsr, r0
+        \\     ldr sp, =__sp_usr
+        \\     ldr r3, =_start
+        \\     bx r3
+
+        );
+}
+
+extern fn _boot() void;

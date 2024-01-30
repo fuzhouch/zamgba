@@ -1,8 +1,9 @@
 /*
  * The linker script is originated from ZigGBA project but modified
- * during study.
+ * during study. Credits goes to the references below:
  *
- * REF: https://github.com/wendigojaeger/ZigGBA
+ * Original version: https://github.com/wendigojaeger/ZigGBA
+ * Learned from https://github.com/ryankurte/rust-gba
  */
 
 /*
@@ -40,12 +41,19 @@ __irq_flags   = 0x03007ff8;
 
 SECTIONS
 {
+    . = __text_start;
+    /* static data stored in cart ROM */
+    .header : {
+        KEEP(*(.header.header));
+    } > pakrom
     .text :
     {
+        KEEP(*(.text._boot));
         *(.text._start)
         *(.text .text.*)
         . = ALIGN(4);
-    } >pakrom
+
+    } >pakrom = 0xFF
 }
 
 /* TODO: Need a .start section. */

@@ -43,6 +43,8 @@ fn addExe(b: *std.Build,
         });
     exe.linkLibrary(linkToLib);
 
+    b.installArtifact(exe);
+
     const objcopy_step = exe.addObjCopy(.{ .format = .bin });
     const install_bin_step = b.addInstallBinFile(
         objcopy_step.getOutputSource(),
