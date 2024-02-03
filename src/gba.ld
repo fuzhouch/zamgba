@@ -42,18 +42,42 @@ __irq_flags   = 0x03007ff8;
 SECTIONS
 {
     . = __text_start;
-    /* static data stored in cart ROM */
-    .header : {
-        KEEP(*(.header.header));
-    } > pakrom
-    .text :
-    {
-        KEEP(*(.text._boot));
-        *(.text._start)
-        *(.text .text.*)
-        . = ALIGN(4);
 
-    } >pakrom = 0xFF
+    .text : {
+        KEEP(*(.header._header));
+        KEEP(*(.text._boot));
+        KEEP(*(.text._start)); /* Supposed there should be an isr */
+        *(.text .text.*);
+        . = ALIGN(4);
+    } > pakrom
+
+    .rodata : {
+        *(.rodata .rodata.*);
+        . = ALIGN(4);
+    } > pakrom
+
+    .data : {
+        _sidata = LOADADDR(.data);
+        . = ALIGN(4);
+        _sdata = .;
+        *(.data);
+
+        . = ALIGN(4);
+        _edata = .;
+    } > iwram AT > pakrom
+
+    .bss : {
+        . = ALIGN(4);
+        _sbss = .;
+        *(.bss);
+        . = ALIGN(4);
+        _ebss = .;
+    } > iwram
+
+    /DISCARD/ :
+    {
+        *(.ARM.exidx .ARM.exidx.*);
+    }
 }
 
 /* TODO: Need a .start section. */
