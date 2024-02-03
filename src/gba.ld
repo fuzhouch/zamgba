@@ -44,13 +44,13 @@ SECTIONS
     . = __text_start;
 
     .text : {
-        KEEP(*(.header._header));
-        KEEP(*(.text._boot));
-        KEEP(*(.text._start)); /* Supposed there should be an isr */
+        KEEP(*(.header));
+        KEEP(*(.start)); /* Supposed there should be an isr */
         *(.text .text.*);
         . = ALIGN(4);
     } > pakrom
 
+    /*
     .rodata : {
         *(.rodata .rodata.*);
         . = ALIGN(4);
@@ -78,6 +78,7 @@ SECTIONS
     {
         *(.ARM.exidx .ARM.exidx.*);
     }
+    */
 }
 
 /* TODO: Need a .start section. */
