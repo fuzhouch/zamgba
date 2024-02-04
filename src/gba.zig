@@ -153,24 +153,22 @@ fn copyDataToEWRAM() void {
 }
 
 fn callUserMain() void {
-    // This logic is correct but fragile. The address hardcoded here
-    // refers to main() function in user code. In theory we should use
-    // 'ldr r0, =.gba.main'. It is resolved to 0x08000128. If we call
-    // bx then it interpret the main() function to ARM instead of thumb
-    // code. The correct way is to use 'ldr r0, =.gba.main + 1'. However
-    // I can't find a correct instruction for this purpose. I tried
-    // movs, but it also clears the high bits of r0.
+    // The logic below just simply call main() function from client.
+    // Note that compiler can automatically detect the content of 
+    // main() is compiled ARM or Thumb instruction set. No need to do +1
+    // manually.
     //
-    // Though current approach works, it can break if we add more
-    // contents in .text section. If the address range in gbal.ld
-    // is broken, we can get unpredictable result.
+    // If you prefer a link script name, for example,
     //
-    // I need help to figure out how to do +1 to a register without
-    // clearing high bit. 
+    //    export fn main() linksection(".gba.main") {}
+    //
+    // then we have do manually call 'adds r0, r0, #1' before calling
+    // 'bx r0', in order to tell bx that we are calling a thumb
+    // function.
     asm volatile (
         \\.thumb
         \\.cpu arm7tdmi
-        \\ldr r0, =0x08000129
+        \\ldr r0, =main
         \\bx r0
         );
 }
@@ -178,7 +176,7 @@ fn callUserMain() void {
 
 export fn _boot() linksection(".gba.boot") void {
     // After jumping from, _start(), we have reached _boot() function.
-    // ZigGBA provide a way with
+    // ZigGBA provides a way like:
     //
     //     const root = @import("root");
     //     'if (@hasDecl(root, "main") { root.main(); }'
@@ -192,9 +190,11 @@ export fn _boot() linksection(".gba.boot") void {
     // NOTE: ZigGBA applies the same approach. Unfortunately the built
     // code does not work anymore. Anyway it also goes to an
     // 'lsl r0, r0, #0' loop. I believe it has the same problem.
-    //     
-    // zeroBss();
-    // copyDataToEWRAM();
+    //
+    // To solve the problem, I decide to use assembly code to call main
+    // function. See callUserMain() for details.
+    zeroBss();
+    copyDataToEWRAM();
     callUserMain();
     while (true) {}
 }
