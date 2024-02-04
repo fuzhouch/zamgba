@@ -8,7 +8,7 @@ const gba = @import("gba");
 // I'm looking for a way to completely remove this statement, leaving
 // only main() in SDK users' code.
 //
-export var gameHeader linksection(".header") = gba.setupROMHeader(
+export var gameHeader linksection(".gba.header") = gba.setupROMHeader(
     "FIRST",
     "AFSE",
     "00",

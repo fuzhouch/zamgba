@@ -29,7 +29,8 @@ MEMORY {
 
 OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
-ENTRY(_start)
+
+ENTRY(__text_start)
 
 __text_start  = ORIGIN(pakrom);
 __eheap_end   = ORIGIN(ewram) + LENGTH(ewram);
@@ -44,9 +45,9 @@ SECTIONS
     . = __text_start;
 
     .text : {
-        KEEP(*(.header));
-        KEEP(*(.start)); /* Supposed there should be an isr */
-        *(.text .text.*);
+        KEEP(*(.gba.header));
+        KEEP(*(.gba.start));
+        *(.text*)
         . = ALIGN(4);
     } > pakrom
 
@@ -80,5 +81,3 @@ SECTIONS
     }
     */
 }
-
-/* TODO: Need a .start section. */

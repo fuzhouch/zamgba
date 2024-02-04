@@ -153,14 +153,23 @@ pub fn setupROMHeader(
     return h;
 }
 
-export fn _start() linksection(".start") void {
+export fn _boot() linksection(".text.boot") void {
+    // zeroBss();
+    // copyDataToEWRAM();
+    if (@hasDecl(root, "main")) {
+        root.main();
+    } else {
+        while (true) {}
+    }
+}
+
+export fn _start() linksection(".gba.start") void {
     // Line 1: Set register base to ioram
     // Line 2-4: Turn on IRQ mode (see gbadoc->hardware-interrupts)
     // Line 5: Set IRQ Stack: 0x03000000 - 0x60 = 0x03007FA0
     // Line 6-7: Switch to System Mode
     // Line 8: Set user stack: (__sp_irq - 0xa0 = 0x03007F00)
-    // Line 9-10: Add pc + #1 = jump and switch to Thumb mode
-    //            (consider 2 instruction prefetch), 0x0800010D
+    // Line 9-10: Jump to _reset() function for initiaization.
     asm volatile (
         \\.arm
         \\.cpu arm7tdmi
@@ -172,19 +181,18 @@ export fn _start() linksection(".start") void {
         \\mov r0, #0x1f
         \\msr cpsr, r0
         \\ldr sp, =__sp_usr
-        \\add r0, pc, #1
-        \\bx r0
+        \\ldr r3, =_boot
+        \\bx r3
     );
 
-    // NOTE: After bx r0, it goes to thumb instruction 'bx lr',
+    // The logic here is different with ZigGBA. ZigGBA combines startup
+    // code in _start(). Thus just do 'bx pc + 1'. However it does not
+    // work in our case, as the next thumb is interpreted as 'bx lr',
     // then it goes back to 'b 0x080000C0'. A dead loop back to header.
     // This is definitely wrong.
-
-    // zeroBss();
-    // copyDataToEWRAM();
-    // if (@hasDecl(root, "main")) {
-    //     root.main();
-    // } else {
-    //    while (true) {}
-    // }
+    //
+    // I still don't understand the root cause. Thus, I modified it
+    // to make it a workaround: just directly jump to _start(). This
+    // is somehow a good choice, as we can go to Zig world as early
+    // as possible.
 }
