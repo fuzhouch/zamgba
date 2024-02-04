@@ -1,70 +1,85 @@
 /*
- The linker script is copied from https://github.com/wendigojaeger/ZigGBA
+ * The linker script is originated from ZigGBA project but modified
+ * during study. Credits goes to the references below:
+ *
+ * Original version: https://github.com/wendigojaeger/ZigGBA
+ * Learned from https://github.com/ryankurte/rust-gba
+ */
+
+/*
+ * Memory layout is based on tonc and other documetations. I mainly
+ * learn from lokathor.
+ * 
+ * 1. https://www.coranac.com/tonc/text/hardware.htm#sec-memory
+ * 2. https://lokathor.github.io/gba-from-scratch/ex1.html
+ * 3. https://mcyoung.xyz/2021/06/01/linker-script/
+ * 4. https://github.com/devkitPro/devkitarm-crtls/blob/master/gba_cart.ld
  */
 MEMORY {
-    rom	: ORIGIN = 0x08000000, LENGTH = 32M
-    iwram	: ORIGIN = 0x03000000, LENGTH = 32K
-    ewram	: ORIGIN = 0x02000000, LENGTH = 256K
+    system  : ORIGIN = 0x00000000, LENGTH = 16K
+    ewram   : ORIGIN = 0x02000000, LENGTH = 256K
+    iwram   : ORIGIN = 0x03000000, LENGTH = 32K
+    ioram   : ORIGIN = 0x04000000, LENGTH = 1K
+    palram  : ORIGIN = 0x05000000, LENGTH = 1K
+    vram    : ORIGIN = 0x06000000, LENGTH = 1K
+    oam     : ORIGIN = 0x07000000, LENGTH = 1K
+    pakrom  : ORIGIN = 0x08000000, LENGTH = 32M
+    cartram : ORIGIN = 0x0E000000, LENGTH = 64K
 }
-
-ENTRY(__text_start)
 
 OUTPUT_FORMAT("elf32-littlearm", "elf32-bigarm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
 
-__text_start = ORIGIN(rom);
-__eheap_end = ORIGIN(ewram) + LENGTH(ewram);
+ENTRY(__text_start)
+
+__text_start  = ORIGIN(pakrom);
+__eheap_end   = ORIGIN(ewram) + LENGTH(ewram);
 __iwram_start = ORIGIN(iwram);
-__iwram_top = ORIGIN(iwram) + LENGTH(iwram);
-__sp_irq = __iwram_top - 0x060;
-__sp_usr = __sp_irq - 0x0a0;
-__irq_flags = 0x03007ff8;
+__iwram_top   = ORIGIN(iwram) + LENGTH(iwram);
+__sp_irq      = __iwram_top - 0x060;
+__sp_usr      = __sp_irq - 0x0a0;
+__irq_flags   = 0x03007ff8;
 
 SECTIONS
 {
     . = __text_start;
 
-    .text :
-    {
-        KEEP(*(.gbaheader))
-        KEEP(*(.gbamain))
-        *(EXCLUDE_FILE (*.iwram*) .text*)
-        . ALIGN(4);
-    } >rom = 0xff
-
-    __text_end = .;
-    .fini :
-    {
-        KEEP (*(.fini))
+    .text : {
+        KEEP(*(.gba.header));
+        KEEP(*(.gba.start));
+        KEEP(*(.gba.boot));
+        KEEP(*(.gba.main));
+        *(.text*)
         . = ALIGN(4);
-    } >rom =0
+    } > pakrom
 
+    /*
     .rodata : {
-        *(.rodata*)
+        *(.rodata .rodata.*);
         . = ALIGN(4);
-    } >rom = 0xff
+    } > pakrom
 
-    .ARM.extab   : { *(.ARM.extab* .gnu.linkonce.armextab.*) } >rom
-    __exidx_start = .;
-    .ARM.exidx   : { *(.ARM.exidx* .gnu.linkonce.armexidx.*) } >rom
-    __exidx_end = .;
-
-    __data_lma = .;
-    .data : AT(__data_lma) {
-        __data_start__ = ABSOLUTE(.);
-        *(.data)
+    .data : {
+        _sidata = LOADADDR(.data);
         . = ALIGN(4);
-        __data_end__ = ABSOLUTE(.);
-    } >ewram = 0xff
+        _sdata = .;
+        *(.data);
 
-    __bss_lma = .;
-    .bss ALIGN(4) (NOLOAD): AT(__bss_lma) {
-        __bss_start__ = ABSOLUTE(.);
-        *(.dynbss)
-        *(.gnu.linkonce.b*)
-        *(.bss)
-        *(COMMON)
         . = ALIGN(4);
-        __bss_end__ = ABSOLUTE(.);
-    } >ewram
+        _edata = .;
+    } > iwram AT > pakrom
+
+    .bss : {
+        . = ALIGN(4);
+        _sbss = .;
+        *(.bss);
+        . = ALIGN(4);
+        _ebss = .;
+    } > iwram
+
+    /DISCARD/ :
+    {
+        *(.ARM.exidx .ARM.exidx.*);
+    }
+    */
 }
