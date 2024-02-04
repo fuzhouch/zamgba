@@ -1,5 +1,8 @@
 const std = @import("std");
-const arm = @import("./src/build/arm.zig");
+
+// Pub is a must. User projects use it to reference to zamgba's build
+// script.
+pub const arm = @import("./src/build/arm.zig");
 
 fn libRoot() []const u8 {
     return std.fs.path.dirname(@src().file) orelse ".";
@@ -19,16 +22,15 @@ const FirstDemoRoot = libRoot() ++ "/demo/first.zig";
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const gba_thumb_target = arm.buildGBAThumbTarget(b);
 
     // Core library
-    const lib = arm.addStaticLib(b, gba_thumb_target, optimize, "zamgba", GBALibFile);
+    const lib = arm.addStaticLib(b, optimize, "zamgba", GBALibFile);
     b.installArtifact(lib);
     b.default_step.dependOn(&lib.step);
 
     // Demos
-
-    arm.addROM(b, gba_thumb_target, optimize, "first", FirstDemoRoot, lib);
+    var first = arm.addROM(b, optimize, "first", FirstDemoRoot);
+    first.linkLibrary(lib);
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.

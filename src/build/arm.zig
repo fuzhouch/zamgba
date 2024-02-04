@@ -9,7 +9,7 @@ fn libRoot() []const u8 {
 const GBALibFile = libRoot() ++ "/../gba.zig";
 const GBALinkerScript = libRoot() ++ "/../gba.ld";
 
-pub fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
+fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
     var query = std.zig.CrossTarget{
         .cpu_arch = std.Target.Cpu.Arch.thumb,
         .cpu_model = .{ .explicit = &std.Target.arm.cpu.arm7tdmi },
@@ -21,16 +21,15 @@ pub fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
 
 pub fn addROM(
     b: *std.Build,
-    target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     executable: []const u8,
     sourceRoot: []const u8,
-    linkToLib: *std.Build.Step.Compile,
-) void {
+) *std.Build.Step.Compile {
+    const gba_thumb_target = buildGBAThumbTarget(b);
     const exe = b.addExecutable(.{
         .name = executable,
         .root_source_file = .{ .path = sourceRoot },
-        .target = target,
+        .target = gba_thumb_target,
         .optimize = optimize,
     });
     exe.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
@@ -39,7 +38,6 @@ pub fn addROM(
             .path = GBALibFile,
         },
     });
-    exe.linkLibrary(linkToLib);
 
     b.installArtifact(exe);
 
@@ -53,19 +51,20 @@ pub fn addROM(
     );
     install_bin_step.step.dependOn(&objcopy_step.step);
     b.default_step.dependOn(&install_bin_step.step);
+    return exe;
 }
 
 pub fn addStaticLib(
     b: *std.Build,
-    target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     name: []const u8,
     rootSource: []const u8,
 ) *std.Build.Step.Compile {
+    const gba_thumb_target = buildGBAThumbTarget(b);
     const lib = b.addStaticLibrary(.{
         .name = name,
         .root_source_file = .{ .path = rootSource },
-        .target = target,
+        .target = gba_thumb_target,
         .optimize = optimize,
     });
     lib.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
