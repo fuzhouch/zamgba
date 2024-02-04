@@ -9,6 +9,8 @@
 //
 // The code below is based on GBATek 3.0 backup below:
 // https://fabiensanglard.net/another_world_polygons_GBA/gbatech.html
+// https://github.com/gbadev-org/gbadoc
+// http://r32.github.io/other/2023-03-22-gba-dev.html
 
 const root = @import("root");
 const header = @import("header.zig");
@@ -152,14 +154,13 @@ pub fn setupROMHeader(
 }
 
 export fn _start() linksection(".start") void {
-
     // Line 1: Set register base to ioram
-    // Line 3: Switch to IRQ mode
-    // Line 5: Set IRQ Stack
-    // Line 6: Switch to System Mode
-    // Line 8: Set user stack
-    // Line 9: Load reset address
-    // Line 10: Jump to _start() for execution.
+    // Line 2-4: Turn on IRQ mode (see gbadoc->hardware-interrupts)
+    // Line 5: Set IRQ Stack: 0x03000000 - 0x60 = 0x03007FA0
+    // Line 6-7: Switch to System Mode
+    // Line 8: Set user stack: (__sp_irq - 0xa0 = 0x03007F00)
+    // Line 9-10: Add pc + #1 = jump and switch to Thumb mode
+    //            (consider 2 instruction prefetch), 0x0800010D
     asm volatile (
         \\.arm
         \\.cpu arm7tdmi
@@ -174,6 +175,10 @@ export fn _start() linksection(".start") void {
         \\add r0, pc, #1
         \\bx r0
     );
+
+    // NOTE: After bx r0, it goes to thumb instruction 'bx lr',
+    // then it goes back to 'b 0x080000C0'. A dead loop back to header.
+    // This is definitely wrong.
 
     // zeroBss();
     // copyDataToEWRAM();
