@@ -6,8 +6,8 @@ fn libRoot() []const u8 {
     return std.fs.path.dirname(@src().file) orelse ".";
 }
 
-const GBALinkerScript = libRoot() ++ "/../gba.ld";
 const GBALibFile = libRoot() ++ "/../gba.zig";
+const GBALinkerScript = libRoot() ++ "/../gba.ld";
 
 pub fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
     var query = std.zig.CrossTarget{
@@ -59,10 +59,12 @@ pub fn addStaticLib(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
+    name: []const u8,
+    rootSource: []const u8,
 ) *std.Build.Step.Compile {
     const lib = b.addStaticLibrary(.{
-        .name = "zamgba",
-        .root_source_file = .{ .path = GBALibFile },
+        .name = name,
+        .root_source_file = .{ .path = rootSource },
         .target = target,
         .optimize = optimize,
     });

@@ -1,6 +1,13 @@
 const std = @import("std");
 const arm = @import("./src/build/arm.zig");
 
+fn libRoot() []const u8 {
+    return std.fs.path.dirname(@src().file) orelse ".";
+}
+
+const GBALibFile = libRoot() ++ "/src/gba.zig";
+const FirstDemoRoot = libRoot() ++ "/demo/first.zig";
+
 // ====================================================================
 // The target definition and gba.ld are initialized from two projects:
 //
@@ -15,12 +22,13 @@ pub fn build(b: *std.Build) void {
     const gba_thumb_target = arm.buildGBAThumbTarget(b);
 
     // Core library
-    const lib = arm.addStaticLib(b, gba_thumb_target, optimize);
+    const lib = arm.addStaticLib(b, gba_thumb_target, optimize, "zamgba", GBALibFile);
     b.installArtifact(lib);
     b.default_step.dependOn(&lib.step);
 
     // Demos
-    arm.addROM(b, gba_thumb_target, optimize, "first", "demo/first.zig", lib);
+
+    arm.addROM(b, gba_thumb_target, optimize, "first", FirstDemoRoot, lib);
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
