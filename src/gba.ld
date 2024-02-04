@@ -47,6 +47,8 @@ SECTIONS
     .text : {
         KEEP(*(.gba.header));
         KEEP(*(.gba.start));
+        KEEP(*(.gba.boot));
+        KEEP(*(.gba.main));
         *(.text*)
         . = ALIGN(4);
     } > pakrom

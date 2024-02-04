@@ -12,7 +12,6 @@
 // https://github.com/gbadev-org/gbadoc
 // http://r32.github.io/other/2023-03-22-gba-dev.html
 
-const root = @import("root");
 const header = @import("header.zig");
 
 // Memory section for hardware read/write
@@ -74,15 +73,6 @@ extern var _edata: u32;
 extern var _sidata: u32;
 extern var __sp_irq: u32;
 extern var __sp_usr: u32;
-
-fn zeroBss() void {
-    // Clear memory of .bss section
-    // (between _sbss and _ebss), filling them to all 0.
-}
-
-fn copyDataToEWRAM() void {
-    // Copy .data section to EWRAM
-}
 
 pub fn setupROMHeader(
     comptime gameTitle: []const u8,
@@ -153,14 +143,60 @@ pub fn setupROMHeader(
     return h;
 }
 
-export fn _boot() linksection(".text.boot") void {
+fn zeroBss() void {
+    // Clear memory of .bss section
+    // (between _sbss and _ebss), filling them to all 0.
+}
+
+fn copyDataToEWRAM() void {
+    // Copy .data section to EWRAM
+}
+
+fn callUserMain() void {
+    // This logic is correct but fragile. The address hardcoded here
+    // refers to main() function in user code. In theory we should use
+    // 'ldr r0, =.gba.main'. It is resolved to 0x08000128. If we call
+    // bx then it interpret the main() function to ARM instead of thumb
+    // code. The correct way is to use 'ldr r0, =.gba.main + 1'. However
+    // I can't find a correct instruction for this purpose. I tried
+    // movs, but it also clears the high bits of r0.
+    //
+    // Though current approach works, it can break if we add more
+    // contents in .text section. If the address range in gbal.ld
+    // is broken, we can get unpredictable result.
+    //
+    // I need help to figure out how to do +1 to a register without
+    // clearing high bit. 
+    asm volatile (
+        \\.thumb
+        \\.cpu arm7tdmi
+        \\ldr r0, =0x08000129
+        \\bx r0
+        );
+}
+
+
+export fn _boot() linksection(".gba.boot") void {
+    // After jumping from, _start(), we have reached _boot() function.
+    // ZigGBA provide a way with
+    //
+    //     const root = @import("root");
+    //     'if (@hasDecl(root, "main") { root.main(); }'
+    //
+    // However, we can't go to main() because @hasDecl() is triggered
+    // at *compile time*, resolving root as gba.zig. Thus it always
+    // falls into a loop. To prove it happens at compile time, just put
+    // root.main() out of @hasDecl() block, it fails compliation
+    // immediately.
+    //
+    // NOTE: ZigGBA applies the same approach. Unfortunately the built
+    // code does not work anymore. Anyway it also goes to an
+    // 'lsl r0, r0, #0' loop. I believe it has the same problem.
+    //     
     // zeroBss();
     // copyDataToEWRAM();
-    if (@hasDecl(root, "main")) {
-        root.main();
-    } else {
-        while (true) {}
-    }
+    callUserMain();
+    while (true) {}
 }
 
 export fn _start() linksection(".gba.start") void {
@@ -169,7 +205,7 @@ export fn _start() linksection(".gba.start") void {
     // Line 5: Set IRQ Stack: 0x03000000 - 0x60 = 0x03007FA0
     // Line 6-7: Switch to System Mode
     // Line 8: Set user stack: (__sp_irq - 0xa0 = 0x03007F00)
-    // Line 9-10: Jump to _reset() function for initiaization.
+    // Line 9-10: Jump to _boot() function for initiaization.
     asm volatile (
         \\.arm
         \\.cpu arm7tdmi
@@ -185,11 +221,21 @@ export fn _start() linksection(".gba.start") void {
         \\bx r3
     );
 
+    //    \\add r0, pc, #1
+    //    \\bx r0
+    // _boot(); // ZigGBA's approach, which does not work.
+
+
     // The logic here is different with ZigGBA. ZigGBA combines startup
     // code in _start(). Thus just do 'bx pc + 1'. However it does not
     // work in our case, as the next thumb is interpreted as 'bx lr',
-    // then it goes back to 'b 0x080000C0'. A dead loop back to header.
-    // This is definitely wrong.
+    // then it goes back to 'b 0x080000C0'. A loop back to header.
+    // This is wrong. 
+    //
+    // ZigGBA just directly does 'bx pc +1', putting _boot() at end of
+    // assembly code in _start(). However in my case it always
+    // fall into an exception calling swige #46464, then move back to
+    // 0x08000000, loop again.
     //
     // I still don't understand the root cause. Thus, I modified it
     // to make it a workaround: just directly jump to _start(). This

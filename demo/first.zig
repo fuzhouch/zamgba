@@ -15,7 +15,7 @@ export var gameHeader linksection(".gba.header") = gba.setupROMHeader(
     0,
 );
 
-fn main() noreturn {
+export fn main() linksection(".gba.main") noreturn {
     // The example https://www.coranac.com/tonc/text/first.htm
 
     // *(unsigned int*)0x04000000 = 0x0403;
