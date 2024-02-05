@@ -129,8 +129,26 @@ Please check comments in ``demo/first.zig`` for technical reasons.
 
 ### Can I reference your library as a dependency?
 
-Possible but not tested yet. The current structure is a bit irregular
-comparing with typical Zig project because my ``build.zig`` sets a
-cross compilation toolchain. When referencing ``zamgba`` as a dependency,
-the ``build.zig`` script must be updated as well. I haven't found a good
-approach yet.
+Yes. Please check example: https://github.com/fuzhouch/consumezamgba.
+
+I recommend we use git submodule to manage zamgba as dependency. This
+should fit the scenarios when developers have to work under a proxy.
+By the time this doc is written (2024-01), ``zig build`` does not work
+well with a proxy when downloading a remote package.
+
+The example project shows three steps to enable your project building
+a GBA rom:
+
+1. ``build.zig`` calls ``@import("zamgba").arm.addROM()`` to define
+   a target. The API defines proper target to build code targeting
+   ARM7tdmi. It also defines step to do ``objcopy``, which is required
+   to convert built ELF file to an ``.gba`` image that can be recognized
+   by mgba.
+2. In source code, define a ``gameHeader`` to register GBA rom header
+   required by GBA device. It must be done by calling
+   ``@import("zamgba").setupROMHeader()``.
+3. Define main() function entry point with ``export`` keyword. It is
+   required by ``zamgba`` to locate the entry point while booting.
+
+
+Enjoy!
