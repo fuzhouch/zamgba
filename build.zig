@@ -23,13 +23,21 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Core library
-    const lib = arm.addStaticLib(b, optimize, "zamgba", GBALibFile);
+    // Step 1: Build zamgba library
+    const lib = arm.addStaticLibrary(b, .{
+        .optimize = optimize,
+        .name = "zamgba",
+        .root_source_file = GBALibFile,
+    });
     b.installArtifact(lib);
     b.default_step.dependOn(&lib.step);
 
-    // Demos
-    var first = arm.addROM(b, optimize, "first", FirstDemoRoot);
+    // Step 2: Create demos
+    var first = arm.addROM(b, .{
+        .optimize = optimize,
+        .name = "first",
+        .root_source_file = FirstDemoRoot,
+    });
     first.linkLibrary(lib);
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
