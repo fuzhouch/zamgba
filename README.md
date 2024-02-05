@@ -83,50 +83,6 @@ steps below:
 5. For debugging, use ``mgba -d ./zig-out/bin/first.gba``. It's a
    powerful assembly debugging tool to solve a lot of problems.
 
-### How can I add my own code?
-
-1. Clone zamgba project.
-2. Add your code, let's say, ``helloworld.zig``, under ``demo/``.
-3. Open ``build.zig``. Edit a line in ``build()`` to add your executable.
-4. Run ``zig build`` command line from top level of ``zamgba`` project.
-
-The build script looks like below:
-
-```
-...
-pub fn build(b: *std.Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const gba_thumb_target = buildGBAThumbTarget(b);
-
-    // Core library
-    const lib = addStaticLib(b, gba_thumb_target, optimize);
-    b.installArtifact(lib);
-    b.default_step.dependOn(&lib.step);
-
-    // Demos
-    addExe(b, gba_thumb_target, optimize, "first", "demo/first.zig", lib);
-
-    // fuzhouch: Add your ROM here
-    addExe(b, gba_thumb_target, optimize, "first", "demo/helloworld.zig", lib);
-
-    ...
-}
-```
-
-When writing ``helloworld.zig``, there are three rules required, in order
-to compile a working GBA ROM:
-
-1. A global header variable must be defined, with ``export`` keyword
-   and ``linksection(".gba.header")`` tagged. It must be initialized
-   with gba.setupROMHeader() function. Every 
-2. The ``main()`` function must be tagged with ``export`` keyword.
-3. The ``main()`` must not return. Zamgba does not handle program exit
-   since GBA does not define graceful shutdown due to a lack of
-   operating system.
-
-Please check comments in ``demo/first.zig`` for technical reasons.
-
 ### Can I reference your library as a dependency?
 
 Yes. Please check example: https://github.com/fuzhouch/consumezamgba.
