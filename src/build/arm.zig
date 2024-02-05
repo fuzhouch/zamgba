@@ -33,7 +33,7 @@ pub fn addROM(
         .optimize = optimize,
     });
     exe.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
-    exe.root_module.addAnonymousImport("gba", .{
+    exe.root_module.addAnonymousImport("zamgba", .{
         .root_source_file = .{
             .path = GBALibFile,
         },

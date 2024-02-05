@@ -1,4 +1,4 @@
-const gba = @import("gba");
+const gba = @import("zamgba");
 
 // The gameHeader is required at the beginning of GBA rom
 // with correct game name, game code, maker code and version.
