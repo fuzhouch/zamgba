@@ -19,53 +19,51 @@ fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
     return std.Build.resolveTargetQuery(b, query);
 }
 
-pub fn addROM(
-    b: *std.Build,
+pub const GBARomOptions = struct {
     optimize: std.builtin.OptimizeMode,
-    executable: []const u8,
-    sourceRoot: []const u8,
-) *std.Build.Step.Compile {
+    name: []const u8,
+    root_source_file: []const u8,
+};
+
+pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     const gba_thumb_target = buildGBAThumbTarget(b);
-    const exe = b.addExecutable(.{
-        .name = executable,
-        .root_source_file = .{ .path = sourceRoot },
+    const rom = b.addExecutable(.{
+        .name = options.name,
+        .root_source_file = .{ .path = options.root_source_file },
         .target = gba_thumb_target,
-        .optimize = optimize,
+        .optimize = options.optimize,
     });
-    exe.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
-    exe.root_module.addAnonymousImport("zamgba", .{
+    rom.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
+
+    // Make sure all roms can reference to zamgba library.
+    rom.root_module.addAnonymousImport("zamgba", .{
         .root_source_file = .{
             .path = GBALibFile,
         },
     });
 
-    b.installArtifact(exe);
-
-    const objcopy_step = exe.addObjCopy(.{ .format = .bin });
+    // Create true rom image that can be recognized by mgba emulator.
+    // Known issue: The built executable (in ELF format) can't be
+    // executed by mgba emulator, unlike devkitARM. Root cause needs
+    // more investigation.
+    const objcopy_step = rom.addObjCopy(.{ .format = .bin });
     const install_bin_step = b.addInstallBinFile(
         objcopy_step.getOutputSource(),
-        b.fmt(
-            "{s}.gba",
-            .{executable},
-        ),
+        b.fmt("{s}.gba", .{options.name}),
     );
+
     install_bin_step.step.dependOn(&objcopy_step.step);
     b.default_step.dependOn(&install_bin_step.step);
-    return exe;
+    return rom;
 }
 
-pub fn addStaticLib(
-    b: *std.Build,
-    optimize: std.builtin.OptimizeMode,
-    name: []const u8,
-    rootSource: []const u8,
-) *std.Build.Step.Compile {
+pub fn addStaticLibrary(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     const gba_thumb_target = buildGBAThumbTarget(b);
     const lib = b.addStaticLibrary(.{
-        .name = name,
-        .root_source_file = .{ .path = rootSource },
+        .name = options.name,
+        .root_source_file = .{ .path = options.root_source_file },
         .target = gba_thumb_target,
-        .optimize = optimize,
+        .optimize = options.optimize,
     });
     lib.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
     return lib;
