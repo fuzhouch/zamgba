@@ -11,7 +11,6 @@
 // https://fabiensanglard.net/another_world_polygons_GBA/gbatech.html
 // https://github.com/gbadev-org/gbadoc
 // http://r32.github.io/other/2023-03-22-gba-dev.html
-
 const header = @import("header.zig");
 
 // Memory section for hardware read/write
@@ -154,7 +153,7 @@ fn copyDataToEWRAM() void {
 
 fn callUserMain() void {
     // The logic below just simply call main() function from client.
-    // Note that compiler can automatically detect the content of 
+    // Note that compiler can automatically detect the content of
     // main() is compiled ARM or Thumb instruction set. No need to do +1
     // manually.
     //
@@ -170,9 +169,8 @@ fn callUserMain() void {
         \\.cpu arm7tdmi
         \\ldr r0, =main
         \\bx r0
-        );
+    );
 }
-
 
 export fn _boot() linksection(".gba.boot") void {
     // After jumping from, _start(), we have reached _boot() function.
@@ -225,12 +223,11 @@ export fn _start() linksection(".gba.start") void {
     //    \\bx r0
     // _boot(); // ZigGBA's approach, which does not work.
 
-
     // The logic here is different with ZigGBA. ZigGBA combines startup
     // code in _start(). Thus just do 'bx pc + 1'. However it does not
     // work in our case, as the next thumb is interpreted as 'bx lr',
     // then it goes back to 'b 0x080000C0'. A loop back to header.
-    // This is wrong. 
+    // This is wrong.
     //
     // ZigGBA just directly does 'bx pc +1', putting _boot() at end of
     // assembly code in _start(). However in my case it always

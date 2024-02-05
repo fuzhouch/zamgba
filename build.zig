@@ -1,83 +1,36 @@
 const std = @import("std");
 
-// ====================================================================
-// The target definition and gba.ld are from @wendigojaeger's project.
-// https://github.com/wendigojaeger/ZigGBA
-//
-
-fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
-    var query = std.zig.CrossTarget {
-        .cpu_arch = std.Target.Cpu.Arch.thumb,
-        .cpu_model = . { .explicit = &std.Target.arm.cpu.arm7tdmi },
-        .os_tag = .freestanding,
-    };
-    query.cpu_features_add.addFeature(@intFromEnum(std.Target.arm.Feature.thumb_mode));
-    return std.Build.resolveTargetQuery(b, query);
-}
+// Pub is a must. User projects use it to reference to zamgba's build
+// script.
+pub const arm = @import("./src/build/arm.zig");
 
 fn libRoot() []const u8 {
     return std.fs.path.dirname(@src().file) orelse ".";
 }
-const GBALinkerScript = libRoot() ++ "/src/gba.ld";
+
 const GBALibFile = libRoot() ++ "/src/gba.zig";
+const FirstDemoRoot = libRoot() ++ "/demo/first.zig";
 
 // ====================================================================
-
-fn addExe(b: *std.Build,
-           target: std.Build.ResolvedTarget,
-           optimize: std.builtin.OptimizeMode,
-           executable: []const u8,
-           sourceRoot: []const u8,
-           linkToLib: *std.Build.Step.Compile) void {
-    const exe = b.addExecutable(.{
-        .name = executable,
-        .root_source_file = .{ .path = sourceRoot },
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.setLinkerScriptPath(std.Build.LazyPath { .path = GBALinkerScript });
-    exe.root_module.addAnonymousImport( "gba", .{
-            .root_source_file = .{
-                .path = GBALibFile
-            }
-        });
-    exe.linkLibrary(linkToLib);
-
-    b.installArtifact(exe);
-
-    const objcopy_step = exe.addObjCopy(.{ .format = .bin });
-    const install_bin_step = b.addInstallBinFile(
-        objcopy_step.getOutputSource(),
-        b.fmt("{s}.gba", .{executable}));
-    install_bin_step.step.dependOn(&objcopy_step.step);
-    b.default_step.dependOn(&install_bin_step.step);
-}
-
-fn addStaticLib(b: *std.Build,
-                target: std.Build.ResolvedTarget,
-                optimize: std.builtin.OptimizeMode) *std.Build.Step.Compile {
-    const lib = b.addStaticLibrary(.{
-        .name = "zamgba",
-        .root_source_file = .{ .path = GBALibFile },
-        .target = target,
-        .optimize = optimize,
-    });
-    lib.setLinkerScriptPath(std.Build.LazyPath { .path = GBALinkerScript });
-    return lib;
-}
-
+// The target definition and gba.ld are initialized from two projects:
+//
+// https://github.com/wendigojaeger/ZigGBA
+// https://github.com/ryankurte/rust-gba
+//
+// It has been modified to fit the changes in zamgba.
+//
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const gba_thumb_target = buildGBAThumbTarget(b);
 
     // Core library
-    const lib = addStaticLib(b, gba_thumb_target, optimize);
+    const lib = arm.addStaticLib(b, optimize, "zamgba", GBALibFile);
     b.installArtifact(lib);
     b.default_step.dependOn(&lib.step);
 
     // Demos
-    addExe(b, gba_thumb_target, optimize, "first", "demo/first.zig", lib);
+    var first = arm.addROM(b, optimize, "first", FirstDemoRoot);
+    first.linkLibrary(lib);
 
     // TODO Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
