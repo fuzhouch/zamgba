@@ -11,6 +11,8 @@ fn libRoot() []const u8 {
 const GBALibFile = libRoot() ++ "/src/gba.zig";
 const FirstDemoRoot = libRoot() ++ "/demo/first.zig";
 
+const LibName = "zamgba";
+
 // ====================================================================
 // The target definition and gba.ld are initialized from two projects:
 //
@@ -23,24 +25,27 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Step 1: Build zamgba library
-    const lib = arm.addStaticLibrary(b, .{
-        .optimize = optimize,
-        .name = "zamgba",
-        .root_source_file = GBALibFile,
-    });
-    b.installArtifact(lib);
-    b.default_step.dependOn(&lib.step);
+    // Define a module that can be referenced by client project.
+    // It's also the interface for client project to consume zamgba.
+    //
+    // Note: the module name can change fast as zamgba is in an
+    // early stage. To keep a stable @import("...") names in
+    // client project, consider defining alias in root_module.addImport().
+    //
+    // see https://github.com/fuzhouch/consumezamgba for how to use it.
+    const m = b.addModule(LibName, .{ .root_source_file = .{
+        .path = GBALibFile,
+    } });
 
-    // Step 2: Create demos
+    // Step 2: Create demo executables
     var first = arm.addROM(b, .{
         .optimize = optimize,
         .name = "first",
         .root_source_file = FirstDemoRoot,
     });
-    first.linkLibrary(lib);
+    first.root_module.addImport(LibName, m);
 
-    // TODO Though not sure whether doable, let's keep unit test anyway.
+    // Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
     const lib_unit_tests = b.addTest(.{
         .root_source_file = .{ .path = "src/ut.zig" },
@@ -49,7 +54,6 @@ pub fn build(b: *std.Build) void {
     });
 
     const run_lib_unit_tests = b.addRunArtifact(lib_unit_tests);
-
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_lib_unit_tests.step);
 }

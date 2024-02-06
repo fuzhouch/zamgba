@@ -35,13 +35,6 @@ pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     });
     rom.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
 
-    // Make sure all roms can reference to zamgba library.
-    rom.root_module.addAnonymousImport("zamgba", .{
-        .root_source_file = .{
-            .path = GBALibFile,
-        },
-    });
-
     // Create true rom image that can be recognized by mgba emulator.
     // Known issue: The built executable (in ELF format) can't be
     // executed by mgba emulator, unlike devkitARM. Root cause needs
