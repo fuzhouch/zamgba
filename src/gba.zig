@@ -57,8 +57,36 @@ pub const MemorySections = struct {
     pub const CARTROM_SIZE_BYTES = 64 * 1024;
 };
 
-pub const SCREEN_WIDTH_PIXELS = 240;
-pub const SCREEN_HEIGHT_PIXELS = 160;
+pub const Screen = struct {
+    pub const WIDTH_PIXELS = 240;
+    pub const HEIGHT_PIXELS = 160;
+};
+
+pub const Display = struct {
+    pub const MODE0 = 0x0000;
+    pub const MODE1 = 0x0001;
+    pub const MODE2 = 0x0002;
+    pub const MODE3 = 0x0003;
+    pub const MODE4 = 0x0004;
+    pub const MODE5 = 0x0005;
+
+    pub const BG0 = 0x0100;
+    pub const BG1 = 0x0200;
+    pub const BG2 = 0x0400;
+    pub const BG4 = 0x0800;
+    pub const OBJ = 0x1000;
+};
+
+pub const Color = struct {
+    pub const BLACK: u16 = 0x0000;
+    pub const RED: u16 = 0x001F;
+    pub const LIME: u16 = 0x03E0;
+    pub const YELLOW: u16 = 0x03FF;
+    pub const BLUE: u16 = 0x7C00;
+    pub const MAG: u16 = 0x7C1F;
+    pub const CYAN: u16 = 0x7FE0;
+    pub const WHITE: u16 = 0x7FFFF;
+};
 
 // ==================================================================
 // Below are boot code
