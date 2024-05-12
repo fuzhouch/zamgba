@@ -34,8 +34,11 @@ pub fn build(b: *std.Build) void {
     //
     // see https://github.com/fuzhouch/consumezamgba for how to use it.
     const m = b.addModule(LibName, .{ .root_source_file = .{
-        .path = GBALibFile,
-    } });
+        .src_path = .{
+            .owner = b,
+            .sub_path = GBALibFile
+        },
+    }});
 
     // Step 2: Create demo executables
     var first = arm.addROM(b, .{
@@ -43,12 +46,18 @@ pub fn build(b: *std.Build) void {
         .name = "first",
         .root_source_file = FirstDemoRoot,
     });
+
     first.root_module.addImport(LibName, m);
 
     // Though not sure whether doable, let's keep unit test anyway.
     // Some logic should be able to run on devbox.
     const lib_unit_tests = b.addTest(.{
-        .root_source_file = .{ .path = "src/ut.zig" },
+        .root_source_file = .{
+            .src_path = . {
+                .owner = b,
+                .sub_path = "src/ut.zig"
+            },
+        },
         .target = target,
         .optimize = optimize,
     });

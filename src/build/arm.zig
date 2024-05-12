@@ -29,11 +29,17 @@ pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
     const gba_thumb_target = buildGBAThumbTarget(b);
     const rom = b.addExecutable(.{
         .name = options.name,
-        .root_source_file = .{ .path = options.root_source_file },
+        .root_source_file = .{ .src_path = .{
+            .owner = b,
+            .sub_path = options.root_source_file,
+        }},
         .target = gba_thumb_target,
         .optimize = options.optimize,
     });
-    rom.setLinkerScriptPath(std.Build.LazyPath{ .path = GBALinkerScript });
+    rom.setLinkerScriptPath(std.Build.LazyPath{ .src_path = .{ 
+        .owner = b,
+        .sub_path = GBALinkerScript,
+    }});
 
     // Create true rom image that can be recognized by mgba emulator.
     // Known issue: The built executable (in ELF format) can't be
@@ -54,7 +60,10 @@ pub fn addStaticLibrary(b: *std.Build, options: GBARomOptions) *std.Build.Step.C
     const gba_thumb_target = buildGBAThumbTarget(b);
     const lib = b.addStaticLibrary(.{
         .name = options.name,
-        .root_source_file = .{ .path = options.root_source_file },
+        .root_source_file = .{ .src_path = .{
+            .owner = b,
+            .sub_path = options.root_source_file,
+        }},
         .target = gba_thumb_target,
         .optimize = options.optimize,
     });
