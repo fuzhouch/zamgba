@@ -10,11 +10,12 @@ const GBALibFile = libRoot() ++ "/../gba.zig";
 const GBALinkerScript = libRoot() ++ "/../gba.ld";
 
 fn buildGBAThumbTarget(b: *std.Build) std.Build.ResolvedTarget {
-    var query = std.zig.CrossTarget{
+    var query = std.Target.Query{
         .cpu_arch = std.Target.Cpu.Arch.thumb,
         .cpu_model = .{ .explicit = &std.Target.arm.cpu.arm7tdmi },
         .os_tag = .freestanding,
     };
+
     query.cpu_features_add.addFeature(@intFromEnum(std.Target.arm.Feature.thumb_mode));
     return std.Build.resolveTargetQuery(b, query);
 }
@@ -32,14 +33,14 @@ pub fn addROM(b: *std.Build, options: GBARomOptions) *std.Build.Step.Compile {
         .root_source_file = .{ .src_path = .{
             .owner = b,
             .sub_path = options.root_source_file,
-        }},
+        } },
         .target = gba_thumb_target,
         .optimize = options.optimize,
     });
-    rom.setLinkerScriptPath(std.Build.LazyPath{ .src_path = .{ 
+    rom.setLinkerScriptPath(std.Build.LazyPath{ .src_path = .{
         .owner = b,
         .sub_path = GBALinkerScript,
-    }});
+    } });
 
     // Create true rom image that can be recognized by mgba emulator.
     // Known issue: The built executable (in ELF format) can't be
@@ -63,7 +64,7 @@ pub fn addStaticLibrary(b: *std.Build, options: GBARomOptions) *std.Build.Step.C
         .root_source_file = .{ .src_path = .{
             .owner = b,
             .sub_path = options.root_source_file,
-        }},
+        } },
         .target = gba_thumb_target,
         .optimize = options.optimize,
     });
