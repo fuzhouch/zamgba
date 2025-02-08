@@ -85,7 +85,7 @@ pub const Color = struct {
     pub const BLUE: u16 = 0x7C00;
     pub const MAG: u16 = 0x7C1F;
     pub const CYAN: u16 = 0x7FE0;
-    pub const WHITE: u16 = 0x7FFFF;
+    pub const WHITE: u16 = 0x7FFF;
 };
 
 // ==================================================================
