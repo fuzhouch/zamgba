@@ -83,38 +83,41 @@ pub const Sprite = struct {
         return Collision.canInteract(self.layer, self.mask, other.layer, other.mask);
     }
 
+    /// Internal helper to advance and collide a single axis (X or Y).
+    fn moveAxis(self: *Sprite, collision_map: CollisionMap, axis: enum { x, y }) bool {
+        const vel = switch (axis) {
+            .x => self.velocity_x,
+            .y => self.velocity_y,
+        };
+        if (vel.raw == 0) return false;
+
+        const test_box = switch (axis) {
+            .x => AABB.init(self.aabb.x.add(vel), self.aabb.y, self.aabb.width, self.aabb.height),
+            .y => AABB.init(self.aabb.x, self.aabb.y.add(vel), self.aabb.width, self.aabb.height),
+        };
+
+        if (collision_map.isColliding(test_box)) {
+            switch (axis) {
+                .x => self.velocity_x = Fixed24_8.zero,
+                .y => self.velocity_y = Fixed24_8.zero,
+            }
+            return true;
+        } else {
+            switch (axis) {
+                .x => self.aabb.x = test_box.x,
+                .y => self.aabb.y = test_box.y,
+            }
+            return false;
+        }
+    }
+
     /// Move the sprite by its current velocity, checking and resolving collisions
     /// independently on X and Y axes against the CollisionMap.
     pub fn moveAndCollide(self: *Sprite, collision_map: CollisionMap) CollisionResult {
-        var result = CollisionResult{};
-
-        // 1. Move along X axis
-        if (self.velocity_x.raw != 0) {
-            const next_x = self.aabb.x.add(self.velocity_x);
-            const test_box_x = AABB.init(next_x, self.aabb.y, self.aabb.width, self.aabb.height);
-
-            if (next_x.raw < 0 or collision_map.isColliding(test_box_x)) {
-                result.collided_x = true;
-                self.velocity_x = Fixed24_8.zero;
-            } else {
-                self.aabb.x = next_x;
-            }
-        }
-
-        // 2. Move along Y axis
-        if (self.velocity_y.raw != 0) {
-            const next_y = self.aabb.y.add(self.velocity_y);
-            const test_box_y = AABB.init(self.aabb.x, next_y, self.aabb.width, self.aabb.height);
-
-            if (next_y.raw < 0 or collision_map.isColliding(test_box_y)) {
-                result.collided_y = true;
-                self.velocity_y = Fixed24_8.zero;
-            } else {
-                self.aabb.y = next_y;
-            }
-        }
-
-        return result;
+        return .{
+            .collided_x = self.moveAxis(collision_map, .x),
+            .collided_y = self.moveAxis(collision_map, .y),
+        };
     }
 
     /// Compiles the engine-level sprite and provided static tile into a hardware OAM attribute.
@@ -330,4 +333,77 @@ test "SPR014: StaticSprite composition and toOamAttr with custom palette bank" {
     try std.testing.expectEqual(@as(u16, 10), attr.attr0);
     try std.testing.expectEqual(@as(u16, 5), attr.attr1);
     try std.testing.expectEqual(@as(u16, (2 << 12) | 1), attr.attr2);
+}
+
+fn mockAllPassable(_: u16, _: u16) bool {
+    return false;
+}
+
+test "SPR015: moveAndCollide boundary handling in all 4 directions across solid and empty maps" {
+    const map_solid = CollisionMap.init(.size_256x256, mockAllPassable, .solid);
+    const map_empty = CollisionMap.init(.size_256x256, mockAllPassable, .empty);
+
+    // 1. Move Left across boundary x=0 (x: 4 -> -4, span [-4, 4))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(4), Fixed24_8.fromInt(64), 8, 8);
+        spr_solid.velocity_x = Fixed24_8.fromInt(-8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_x);
+        try std.testing.expectEqual(@as(i32, 4), spr_solid.aabb.x.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_x.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(4), Fixed24_8.fromInt(64), 8, 8);
+        spr_empty.velocity_x = Fixed24_8.fromInt(-8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_x);
+        try std.testing.expectEqual(@as(i32, -4), spr_empty.aabb.x.toInt());
+    }
+
+    // 2. Move Right across boundary x=256 (x: 248 -> 256, span [256, 264))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(248), Fixed24_8.fromInt(64), 8, 8);
+        spr_solid.velocity_x = Fixed24_8.fromInt(8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_x);
+        try std.testing.expectEqual(@as(i32, 248), spr_solid.aabb.x.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_x.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(248), Fixed24_8.fromInt(64), 8, 8);
+        spr_empty.velocity_x = Fixed24_8.fromInt(8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_x);
+        try std.testing.expectEqual(@as(i32, 256), spr_empty.aabb.x.toInt());
+    }
+
+    // 3. Move Top across boundary y=0 (y: 4 -> -4, span [-4, 4))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(4), 8, 8);
+        spr_solid.velocity_y = Fixed24_8.fromInt(-8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_y);
+        try std.testing.expectEqual(@as(i32, 4), spr_solid.aabb.y.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_y.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(4), 8, 8);
+        spr_empty.velocity_y = Fixed24_8.fromInt(-8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_y);
+        try std.testing.expectEqual(@as(i32, -4), spr_empty.aabb.y.toInt());
+    }
+
+    // 4. Move Bottom across boundary y=256 (y: 248 -> 256, span [256, 264))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(248), 8, 8);
+        spr_solid.velocity_y = Fixed24_8.fromInt(8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_y);
+        try std.testing.expectEqual(@as(i32, 248), spr_solid.aabb.y.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_y.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(248), 8, 8);
+        spr_empty.velocity_y = Fixed24_8.fromInt(8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_y);
+        try std.testing.expectEqual(@as(i32, 256), spr_empty.aabb.y.toInt());
+    }
 }

@@ -106,10 +106,31 @@ pub const CollisionMap = struct {
         const top_raw = box.y.raw;
         const bottom_raw = box.bottom().raw;
 
-        const min_tx = @as(u16, @intCast(left_raw >> (Fixed24_8.fraction_bits + 3)));
-        const max_tx = @as(u16, @intCast((right_raw - 1) >> (Fixed24_8.fraction_bits + 3)));
-        const min_ty = @as(u16, @intCast(top_raw >> (Fixed24_8.fraction_bits + 3)));
-        const max_ty = @as(u16, @intCast((bottom_raw - 1) >> (Fixed24_8.fraction_bits + 3)));
+        const map_w_raw = @as(i32, @intCast(self.size.pixelWidth())) << Fixed24_8.fraction_bits;
+        const map_h_raw = @as(i32, @intCast(self.size.pixelHeight())) << Fixed24_8.fraction_bits;
+
+        const is_oob = (left_raw < 0) or (right_raw > map_w_raw) or (top_raw < 0) or (bottom_raw > map_h_raw);
+
+        if (is_oob) {
+            if (self.out_of_bounds == .solid) return true;
+            if (right_raw <= 0 or left_raw >= map_w_raw or bottom_raw <= 0 or top_raw >= map_h_raw) {
+                return false;
+            }
+        }
+
+        const clamped_left = @max(0, left_raw);
+        const clamped_right = @min(map_w_raw, right_raw);
+        const clamped_top = @max(0, top_raw);
+        const clamped_bottom = @min(map_h_raw, bottom_raw);
+
+        if (clamped_left >= clamped_right or clamped_top >= clamped_bottom) {
+            return false;
+        }
+
+        const min_tx = @as(u16, @intCast(clamped_left >> (Fixed24_8.fraction_bits + 3)));
+        const max_tx = @as(u16, @intCast((clamped_right - 1) >> (Fixed24_8.fraction_bits + 3)));
+        const min_ty = @as(u16, @intCast(clamped_top >> (Fixed24_8.fraction_bits + 3)));
+        const max_ty = @as(u16, @intCast((clamped_bottom - 1) >> (Fixed24_8.fraction_bits + 3)));
 
         var ty = min_ty;
         while (ty <= max_ty) : (ty += 1) {
@@ -143,10 +164,34 @@ pub const CollisionMap = struct {
         const top_raw = box.y.raw;
         const bottom_raw = box.bottom().raw;
 
-        const min_tx = @as(u16, @intCast(left_raw >> (Fixed24_8.fraction_bits + 3)));
-        const max_tx = @as(u16, @intCast((right_raw - 1) >> (Fixed24_8.fraction_bits + 3)));
-        const min_ty = @as(u16, @intCast(top_raw >> (Fixed24_8.fraction_bits + 3)));
-        const max_ty = @as(u16, @intCast((bottom_raw - 1) >> (Fixed24_8.fraction_bits + 3)));
+        const map_w_raw = @as(i32, @intCast(self.size.pixelWidth())) << Fixed24_8.fraction_bits;
+        const map_h_raw = @as(i32, @intCast(self.size.pixelHeight())) << Fixed24_8.fraction_bits;
+
+        const is_oob = (left_raw < 0) or (right_raw > map_w_raw) or (top_raw < 0) or (bottom_raw > map_h_raw);
+
+        if (is_oob and self.out_of_bounds == .solid) {
+            const tx = if (left_raw < 0) 0 else if (left_raw >= map_w_raw) self.size.tileWidth() else @as(u16, @intCast(left_raw >> (Fixed24_8.fraction_bits + 3)));
+            const ty = if (top_raw < 0) 0 else if (top_raw >= map_h_raw) self.size.tileHeight() else @as(u16, @intCast(top_raw >> (Fixed24_8.fraction_bits + 3)));
+            return .{ .tx = tx, .ty = ty };
+        }
+
+        if (right_raw <= 0 or left_raw >= map_w_raw or bottom_raw <= 0 or top_raw >= map_h_raw) {
+            return null;
+        }
+
+        const clamped_left = @max(0, left_raw);
+        const clamped_right = @min(map_w_raw, right_raw);
+        const clamped_top = @max(0, top_raw);
+        const clamped_bottom = @min(map_h_raw, bottom_raw);
+
+        if (clamped_left >= clamped_right or clamped_top >= clamped_bottom) {
+            return null;
+        }
+
+        const min_tx = @as(u16, @intCast(clamped_left >> (Fixed24_8.fraction_bits + 3)));
+        const max_tx = @as(u16, @intCast((clamped_right - 1) >> (Fixed24_8.fraction_bits + 3)));
+        const min_ty = @as(u16, @intCast(clamped_top >> (Fixed24_8.fraction_bits + 3)));
+        const max_ty = @as(u16, @intCast((clamped_bottom - 1) >> (Fixed24_8.fraction_bits + 3)));
 
         var ty = min_ty;
         while (ty <= max_ty) : (ty += 1) {
@@ -255,4 +300,66 @@ test "CollisionMap out of bounds behavior" {
     // Map with out_of_bounds = .empty
     const map_empty = CollisionMap.init(.size_256x256, mockSolidAt2_2, .empty);
     try std.testing.expect(!map_empty.isColliding(box_oob));
+}
+
+fn mockAllEmpty(_: u16, _: u16) bool {
+    return false;
+}
+
+test "MAP005: Symmetric map boundary collision checks (4 directions x 2 modes x partial & complete OOB)" {
+    // 256x256 pixel map with all walkable tiles (no solid internal tiles).
+    const map_solid = CollisionMap.init(.size_256x256, mockAllEmpty, .solid);
+    const map_empty = CollisionMap.init(.size_256x256, mockAllEmpty, .empty);
+
+    // -------------------------------------------------------------------------
+    // 1. LEFT Boundary (x < 0)
+    // Partial: x = -4, width = 8 -> span [-4, 4) -> crosses left boundary x=0.
+    // Complete: x = -16, width = 8 -> span [-16, -8) -> fully outside left.
+    // -------------------------------------------------------------------------
+    const box_left_partial = AABB.fromInt(-4, 64, 8, 8);
+    const box_left_complete = AABB.fromInt(-16, 64, 8, 8);
+
+    try std.testing.expect(map_solid.isColliding(box_left_partial));
+    try std.testing.expect(map_solid.isColliding(box_left_complete));
+    try std.testing.expect(!map_empty.isColliding(box_left_partial));
+    try std.testing.expect(!map_empty.isColliding(box_left_complete));
+
+    // -------------------------------------------------------------------------
+    // 2. RIGHT Boundary (x + width > 256)
+    // Partial: x = 252, width = 8 -> right = 252 + 8 = 260 -> span [252, 260) -> crosses right boundary 256.
+    // Complete: x = 260, width = 8 -> right = 260 + 8 = 268 -> fully outside right.
+    // -------------------------------------------------------------------------
+    const box_right_partial = AABB.fromInt(252, 64, 8, 8);
+    const box_right_complete = AABB.fromInt(260, 64, 8, 8);
+
+    try std.testing.expect(map_solid.isColliding(box_right_partial));
+    try std.testing.expect(map_solid.isColliding(box_right_complete));
+    try std.testing.expect(!map_empty.isColliding(box_right_partial));
+    try std.testing.expect(!map_empty.isColliding(box_right_complete));
+
+    // -------------------------------------------------------------------------
+    // 3. TOP Boundary (y < 0)
+    // Partial: y = -4, height = 8 -> span [-4, 4) -> crosses top boundary y=0.
+    // Complete: y = -16, height = 8 -> span [-16, -8) -> fully outside top.
+    // -------------------------------------------------------------------------
+    const box_top_partial = AABB.fromInt(64, -4, 8, 8);
+    const box_top_complete = AABB.fromInt(64, -16, 8, 8);
+
+    try std.testing.expect(map_solid.isColliding(box_top_partial));
+    try std.testing.expect(map_solid.isColliding(box_top_complete));
+    try std.testing.expect(!map_empty.isColliding(box_top_partial));
+    try std.testing.expect(!map_empty.isColliding(box_top_complete));
+
+    // -------------------------------------------------------------------------
+    // 4. BOTTOM Boundary (y + height > 256)
+    // Partial: y = 252, height = 8 -> bottom = 252 + 8 = 260 -> span [252, 260) -> crosses bottom boundary 256.
+    // Complete: y = 260, height = 8 -> bottom = 260 + 8 = 268 -> fully outside bottom.
+    // -------------------------------------------------------------------------
+    const box_bottom_partial = AABB.fromInt(64, 252, 8, 8);
+    const box_bottom_complete = AABB.fromInt(64, 260, 8, 8);
+
+    try std.testing.expect(map_solid.isColliding(box_bottom_partial));
+    try std.testing.expect(map_solid.isColliding(box_bottom_complete));
+    try std.testing.expect(!map_empty.isColliding(box_bottom_partial));
+    try std.testing.expect(!map_empty.isColliding(box_bottom_complete));
 }
