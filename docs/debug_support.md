@@ -1,10 +1,21 @@
-# GBA Debug & Diagnostic Support Design
+# GBA Debug & Diagnostic Support Design (Target: v0.3.0)
 
-This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.debug` and `hal.debug`). It also analyzes the font rendering requirements, copyright-free assets, and industry-standard practices from Tonc and Butano.
+This document details the architectural design, performance guards, and implementation plan for the Zamgba Debug and Logging subsystem (`engine.debug` and `hal.debug`). It also analyzes the font rendering requirements, copyright-free assets, industry-standard practices from Tonc and Butano, and incorporates learnings from bare-metal optimization pitfalls (see [Case Study: Undefined Behavior & Release Mode Divergence](zig_unreachable_case_study.md)).
 
 ---
 
-## 1. The Core Philosophy: Two Debugging Channels
+## 1. Motivation: Why Debug Support is v0.3.0's Priority #1
+
+As demonstrated in [Issue #32](https://github.com/tsetseggames/zamgba/issues/32) and detailed in [docs/zig_unreachable_case_study.md](zig_unreachable_case_study.md), bare-metal GBA games have no default standard output or operating system console. When a runtime error or `catch unreachable` is triggered:
+- `ReleaseFast` may crash silently into a black screen via dead-code elimination or ARM traps.
+- `ReleaseSmall` may mask the error and produce deceiving behavior.
+- Developers are left guessing whether the cause is math, DMA, physics, memory alignment, or register corruption.
+
+The primary objective of the **v0.3.0 Debug Subsystem** is to provide instant, zero-cost error reporting, stack-safe assertions, visual panic indicators, and real-time VRAM/DMA diagnostics.
+
+---
+
+## 2. The Core Philosophy: Two Debugging Channels
 
 GBA has no operating system console, but we can divide debug requirements into two distinct channels based on the use case:
 
@@ -19,12 +30,12 @@ GBA has no operating system console, but we can divide debug requirements into t
 - mGBA / No$GBA Terminal Console                              - Screen Overlay (OSD HUD Text)
 - ZERO GBA VRAM footprint                                     - Uses BG/OBJ VRAM tiles
 - ZERO copyright / font design overhead                       - Requires a 1-bit or 4-bpp pixel font
-- Primary target for 0.2.0-dev                                - Recommended for target hardware/TV testing
+- Primary target for v0.3.0                                   - Recommended for target hardware/TV testing
 ```
 
 ---
 
-## 2. Channel 1: Host Simulator Console Logging (0.2.0-dev Focus)
+## 3. Channel 1: Host Simulator Console Logging (v0.3.0 Primary Target)
 
 ### A. How It Works (The MMIO Emulator Loophole)
 Modern GBA emulators (specifically **mGBA** and **No$GBA**) intercept reads and writes to unmapped/unused hardware I/O address ranges. 
@@ -70,13 +81,14 @@ To eliminate any legal, licensing, or design hurdles, developers can choose one 
 
 ---
 
-## 4. Subsystem Implementation Plan for 0.2.0-dev
+## 5. Subsystem Implementation Plan for v0.3.0
 
 We will implement the debugging subsystem in two tightly scoped phases:
 
-### Phase 1: Emulator Debug Port Driver (`src/hal/debug.zig`)
-* Atomic, unsafe-free write routines to mGBA registers.
-* Support for basic logging levels: `debug`, `info`, `warn`, `err`.
+### Phase 1: Emulator Debug Port Driver & Panic Handler (`src/hal/debug.zig`)
+* Atomic, unsafe-free write routines to mGBA registers (`0x04FFF780`).
+* Support for logging levels: `debug`, `info`, `warn`, `err`.
+* **Visual Panic Hook**: In case of unhandled initialization error, flush the error message to mGBA log and turn backdrop color red (`RGB555(31, 0, 0)`), preventing silent black-screen hangs.
 * Stack-only, fixed-size buffering (`[256]u8`) utilizing `std.fmt.format` to avoid heap allocations.
 
 ### Phase 2: Engine Diagnostics Dispatcher (`src/engine/debug.zig`)
@@ -89,12 +101,12 @@ We will implement the debugging subsystem in two tightly scoped phases:
 
 ---
 
-## 5. Developer Diagnostic Report Example
+## 6. Developer Diagnostic Report Example
 
 When a developer triggers a dump (e.g. by pressing `Select`), the mGBA Terminal Console will output:
 
 ```text
-=== [Zamgba Engine 0.2.0 Debug Diagnostics] ===
+=== [Zamgba Engine 0.3.0 Debug Diagnostics] ===
 [VRAM Tiles]: 36 / 1024 slots (3.5% used, 988 free slots)
 [DMA Budget]: 1024 / 4096 bytes (1 task, Peak: 1024 bytes)
 

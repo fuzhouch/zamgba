@@ -38,11 +38,11 @@ const Game = struct {
     const ENEMY_1_SPEED_Y = Fixed24_8.fromInt(1);
     const ENEMY_2_SPEED_Y = Fixed24_8.fromInt(1);
 
-    pub fn init() Game {
+    pub fn init() !Game {
         // 1. Initialize Player using AnimatedSprite in streaming mode
         // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
-        var player_anim = engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y)) catch unreachable;
-        player_anim.setAnimation("fly") catch unreachable;
+        var player_anim = try engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y));
+        try player_anim.setAnimation("flying");
 
         // 2. Configure collision layers on the underlying Sprite
         const spr = player_anim.getSprite();
@@ -159,6 +159,12 @@ const Game = struct {
 
 export fn main() noreturn {
     engine.initHardware();
-    var game = Game.init();
+
+    // TODO
+    // Using unreachable is not a good practice.
+    // See docs/zig_unreachable_case_study.md for more details.
+    //
+    // The plan in 0.3.0 is to add proper diagnose support.
+    var game = Game.init() catch unreachable;
     engine.run(&game);
 }
