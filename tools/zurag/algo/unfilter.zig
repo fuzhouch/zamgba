@@ -159,3 +159,19 @@ test "UNF002: unfilterScanlines subsequent rows referencing prior row for Up, Av
     try std.testing.expectEqual(@as(u8, 24), pixels[10]);
     try std.testing.expectEqual(@as(u8, 34), pixels[11]);
 }
+
+test "UNF003: unfilterScanlines Sub filter accumulates left pixel with modulo wrapping" {
+    // 4 pixels per row, Filter 1 (Sub)
+    // Row 0: filter=1, raw=[10, 20, 30, 240]
+    // x=0: a=0  -> val = 10 + 0 = 10, a=10
+    // x=1: a=10 -> val = 20 + 10 = 30, a=30
+    // x=2: a=30 -> val = 30 + 30 = 60, a=60
+    // x=3: a=60 -> val = 240 +% 60 = 44 (modulo 256 wrap: (240+60)%256 = 44)
+    const raw_row_sub = [_]u8{ 1, 10, 20, 30, 240 };
+    var pixels: [4]u8 = undefined;
+    try unfilterScanlines(&pixels, &raw_row_sub, 4, 1);
+    try std.testing.expectEqual(@as(u8, 10), pixels[0]);
+    try std.testing.expectEqual(@as(u8, 30), pixels[1]);
+    try std.testing.expectEqual(@as(u8, 60), pixels[2]);
+    try std.testing.expectEqual(@as(u8, 44), pixels[3]);
+}
