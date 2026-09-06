@@ -9,6 +9,7 @@ pub const TileError = error{
     OutOfVram,
     EmptySheet,
     TagNotFound,
+    InvalidFrameIndex,
     Unimplemented,
 };
 
@@ -146,18 +147,18 @@ pub const AnimatedTiles = struct {
     }
 
     /// Selects an animation tag by name (e.g. "fly", "run", "idle").
-    pub fn setAnimation(self: *AnimatedTiles, tag_name: []const u8) bool {
+    pub fn setAnimation(self: *AnimatedTiles, tag_name: []const u8) TileError!void {
         for (self.sheet.tags, 0..) |tag, i| {
             if (std.mem.eql(u8, tag.name, tag_name)) {
                 return self.setAnimationByIndex(i);
             }
         }
-        return false;
+        return error.TagNotFound;
     }
 
     /// Selects an animation tag by index without string lookup overhead.
-    pub fn setAnimationByIndex(self: *AnimatedTiles, tag_index: usize) bool {
-        if (tag_index >= self.sheet.tags.len) return false;
+    pub fn setAnimationByIndex(self: *AnimatedTiles, tag_index: usize) TileError!void {
+        if (tag_index >= self.sheet.tags.len) return error.TagNotFound;
         const tag = self.sheet.tags[tag_index];
         self.current_tag_index = tag_index;
         self.current_frame = tag.from_frame;
@@ -165,12 +166,11 @@ pub const AnimatedTiles = struct {
         self.pingpong_reverse = false;
         self.is_playing = true;
         self.stageCurrentFrameWithQueue(null);
-        return true;
     }
 
     /// Directly sets the current frame index.
-    pub fn setFrame(self: *AnimatedTiles, frame_index: usize) void {
-        if (frame_index >= self.sheet.frame_count) return;
+    pub fn setFrame(self: *AnimatedTiles, frame_index: usize) TileError!void {
+        if (frame_index >= self.sheet.frame_count) return error.InvalidFrameIndex;
         self.current_frame = frame_index;
         self.frame_timer = 0;
         self.stageCurrentFrameWithQueue(null);
@@ -352,7 +352,7 @@ test "ANI002: AnimatedTiles init with static mode uses base tile_index and advan
     try std.testing.expect(anim_tiles.vram_alloc == null);
     try std.testing.expectEqual(@as(u16, 0), anim_tiles.getTile().tile_index);
 
-    anim_tiles.setFrame(1);
+    try anim_tiles.setFrame(1);
     try std.testing.expectEqual(@as(usize, 1), anim_tiles.current_frame);
     try std.testing.expectEqual(@as(u16, 4), anim_tiles.getTile().tile_index);
 }
@@ -376,13 +376,17 @@ test "ANI003: AnimatedTiles setAnimation and setAnimationByIndex select tag and 
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .static);
     defer anim_tiles.deinit();
 
-    try std.testing.expect(anim_tiles.setAnimation("attack"));
+    try anim_tiles.setAnimation("attack");
     try std.testing.expectEqual(@as(usize, 2), anim_tiles.current_frame);
-    try std.testing.expect(!anim_tiles.setAnimation("non_existent"));
+    try std.testing.expectError(TileError.TagNotFound, anim_tiles.setAnimation("non_existent"));
 
-    try std.testing.expect(anim_tiles.setAnimationByIndex(0));
+    try anim_tiles.setAnimationByIndex(0);
     try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
-    try std.testing.expect(!anim_tiles.setAnimationByIndex(99));
+    try std.testing.expectError(TileError.TagNotFound, anim_tiles.setAnimationByIndex(99));
+
+    try anim_tiles.setFrame(3);
+    try std.testing.expectEqual(@as(usize, 3), anim_tiles.current_frame);
+    try std.testing.expectError(TileError.InvalidFrameIndex, anim_tiles.setFrame(10));
 }
 
 test "ANI004: AnimatedTiles updateWithQueue advances frame on timer expiration and stages DMA" {
@@ -405,7 +409,7 @@ test "ANI004: AnimatedTiles updateWithQueue advances frame on timer expiration a
 
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .streaming);
     defer anim_tiles.deinit();
-    _ = anim_tiles.setAnimation("walk");
+    try anim_tiles.setAnimation("walk");
 
     test_queue.clear();
 
@@ -459,7 +463,7 @@ test "ANI006: pingpong animation direction reverses correctly" {
 
     var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .static);
     defer anim_tiles.deinit();
-    _ = anim_tiles.setAnimation("ping");
+    try anim_tiles.setAnimation("ping");
 
     try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
     anim_tiles.update();

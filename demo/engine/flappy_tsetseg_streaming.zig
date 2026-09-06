@@ -42,7 +42,7 @@ const Game = struct {
         // 1. Initialize Player using AnimatedSprite in streaming mode
         // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
         var player_anim = engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y)) catch unreachable;
-        _ = player_anim.setAnimation("fly");
+        player_anim.setAnimation("fly") catch unreachable;
 
         // 2. Configure collision layers on the underlying Sprite
         const spr = player_anim.getSprite();
@@ -93,7 +93,7 @@ const Game = struct {
         spr.velocity_x = Fixed24_8.zero;
         spr.velocity_y = Fixed24_8.zero;
         spr.h_flip = false;
-        self.player.setFrame(0);
+        self.player.setFrame(0) catch {};
 
         self.enemies[0].sprite.aabb.x = Fixed24_8.fromInt(ENEMY_1_START_X);
         self.enemies[0].sprite.aabb.y = Fixed24_8.fromInt(ENEMY_1_START_Y);

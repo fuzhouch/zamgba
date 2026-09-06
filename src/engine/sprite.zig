@@ -212,18 +212,18 @@ pub const AnimatedSprite = struct {
     }
 
     /// Selects an animation tag by name (e.g. "fly", "run", "idle").
-    pub fn setAnimation(self: *AnimatedSprite, tag_name: []const u8) bool {
+    pub fn setAnimation(self: *AnimatedSprite, tag_name: []const u8) TileError!void {
         return self.tiles.setAnimation(tag_name);
     }
 
     /// Selects an animation tag by index without runtime string lookup.
-    pub fn setAnimationByIndex(self: *AnimatedSprite, tag_index: usize) bool {
+    pub fn setAnimationByIndex(self: *AnimatedSprite, tag_index: usize) TileError!void {
         return self.tiles.setAnimationByIndex(tag_index);
     }
 
     /// Directly sets the current frame index.
-    pub fn setFrame(self: *AnimatedSprite, frame_index: usize) void {
-        self.tiles.setFrame(frame_index);
+    pub fn setFrame(self: *AnimatedSprite, frame_index: usize) TileError!void {
+        return self.tiles.setFrame(frame_index);
     }
 
     /// Advances the animation frame timer by 1 tick (~16.6ms at 60Hz).
@@ -410,11 +410,22 @@ test "ANI007: AnimatedSprite composition and toOamAttr output" {
         .frame_count = 2,
         .tiles = &[_]u8{0} ** 256,
         .durations_ms = &[_]u16{ 100, 100 },
-        .tags = &[_]AnimationTag{},
+        .tags = &[_]AnimationTag{
+            .{ .name = "idle", .from_frame = 0, .to_frame = 1, .direction = .forward },
+        },
     };
 
     var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30));
     defer anim_spr.deinit();
+
+    try anim_spr.setAnimation("idle");
+    try std.testing.expectError(TileError.TagNotFound, anim_spr.setAnimation("non_existent"));
+
+    try anim_spr.setAnimationByIndex(0);
+    try std.testing.expectError(TileError.TagNotFound, anim_spr.setAnimationByIndex(5));
+
+    try anim_spr.setFrame(1);
+    try std.testing.expectError(TileError.InvalidFrameIndex, anim_spr.setFrame(10));
 
     const spr = anim_spr.getSprite();
     spr.h_flip = true;
