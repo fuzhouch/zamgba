@@ -127,6 +127,16 @@ pub const Sprite = struct {
 };
 
 /// Compiles an engine-level sprite and provided static tile into a hardware OAM attribute.
+/// Internal OAM attribute builder.
+///
+/// Design Decision:
+/// `Sprite` is a pure spatial/physics entity (position, velocity, AABB, flips, collision masks)
+/// and deliberately does NOT hold graphical tile metadata (tile_index, palette_bank, bpp).
+/// Conversely, `StaticTile` and `AnimatedTiles` only hold tile descriptors without spatial context.
+///
+/// GBA hardware OAM requires BOTH spatial bits (Attr0/Attr1) and graphical tile bits (Attr2).
+/// Therefore, `compileOamAttr` is kept module-private to enforce that only complete composite
+/// entities (`StaticSprite`, `AnimatedSprite`) expose public `toOamAttr()` methods to `engine.drawSprite()`.
 fn compileOamAttr(spr: *const Sprite, tile_attr: StaticTile) hal.oam.ObjAttr {
     if (!spr.visible) {
         return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
