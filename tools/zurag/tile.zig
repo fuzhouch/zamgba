@@ -257,3 +257,56 @@ test "TIL005: sliceSpriteFrame: reject multi-bank color conflict in 4-bpp mode" 
     const rect = Rect{ .x = 0, .y = 0, .w = 16, .h = 16 };
     try std.testing.expectError(error.MultiBankColorConflict, sliceSpriteFrame(std.testing.allocator, &fake_img, rect, .bpp4));
 }
+
+test "TIL006: sliceSpriteFrame: bpp4x16 bank detection and single-bank slicing" {
+    var fake_pixels: [16 * 16]u8 = @splat(0);
+    // Bank 2 colors: indices in range [32..47]
+    fake_pixels[0] = 2 * COLORS_PER_BANK + 3; // Bank 2, color 3 (lower nibble 3)
+    fake_pixels[1] = 2 * COLORS_PER_BANK + 5; // Bank 2, color 5 (upper nibble 5)
+
+    const fake_img = png.IndexedImage{
+        .width = 16,
+        .height = 16,
+        .pixels = &fake_pixels,
+        .allocator = std.testing.allocator,
+    };
+
+    const rect = Rect{ .x = 0, .y = 0, .w = 16, .h = 16 };
+    var frame = try sliceSpriteFrame(std.testing.allocator, &fake_img, rect, .bpp4x16);
+    defer frame.deinit();
+
+    try std.testing.expectEqual(@as(u8, 2), frame.detected_bank);
+    try std.testing.expectEqual(@as(usize, 4), frame.tile_count);
+    // Verify first tile byte 0 packs (5 << 4) | 3 = 0x53
+    const expected_byte0: u8 = (5 << BITS_PER_PIXEL_4BPP) | 3;
+    try std.testing.expectEqual(expected_byte0, frame.bytes[0]);
+
+    // All-transparent frame should fall back to bank 0
+    var transparent_pixels: [8 * 8]u8 = @splat(0);
+    const transparent_img = png.IndexedImage{
+        .width = 8,
+        .height = 8,
+        .pixels = &transparent_pixels,
+        .allocator = std.testing.allocator,
+    };
+    var transparent_frame = try sliceSpriteFrame(std.testing.allocator, &transparent_img, Rect{ .x = 0, .y = 0, .w = 8, .h = 8 }, .bpp4x16);
+    defer transparent_frame.deinit();
+    try std.testing.expectEqual(@as(u8, 0), transparent_frame.detected_bank);
+}
+
+test "TIL007: sliceSpriteFrame: bpp4x16 reject multi-bank color conflict" {
+    var fake_pixels: [16 * 16]u8 = @splat(0);
+    // Mix Bank 1 color (index 18) and Bank 2 color (index 34) in the same frame
+    fake_pixels[0] = 1 * COLORS_PER_BANK + 2;
+    fake_pixels[1] = 2 * COLORS_PER_BANK + 2;
+
+    const fake_img = png.IndexedImage{
+        .width = 16,
+        .height = 16,
+        .pixels = &fake_pixels,
+        .allocator = std.testing.allocator,
+    };
+
+    const rect = Rect{ .x = 0, .y = 0, .w = 16, .h = 16 };
+    try std.testing.expectError(error.MultiBankColorConflict, sliceSpriteFrame(std.testing.allocator, &fake_img, rect, .bpp4x16));
+}
