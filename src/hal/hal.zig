@@ -12,10 +12,9 @@
 // https://github.com/gbadev-org/gbadoc
 // http://r32.github.io/other/2023-03-22-gba-dev.html
 const header = @import("header.zig");
-const builtin = @import("builtin");
-const is_gba_target = builtin.target.cpu.arch == .arm or builtin.target.cpu.arch == .thumb;
 
 pub const specs = @import("specs.zig");
+pub const is_gba_target = specs.is_gba_target;
 pub const MemorySections = specs.MemorySections;
 pub const Screen = specs.Screen;
 pub const Color = specs.Color;

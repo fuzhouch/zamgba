@@ -1,5 +1,6 @@
 const std = @import("std");
-const builtin = @import("builtin");
+const specs = @import("specs.zig");
+const is_gba_target = specs.is_gba_target;
 
 /// GBA DMA Channels (DMA 0 to DMA 3).
 pub const Channel = enum(u2) {
@@ -88,8 +89,6 @@ pub const DmaError = error{
     InvalidCount,
     UnalignedPointer,
 };
-
-const is_gba_target = builtin.target.os.tag == .freestanding or builtin.target.cpu.arch == .arm or builtin.target.cpu.arch == .thumb;
 
 pub const MockDmaRegisters = struct {
     sad: u32 = 0,

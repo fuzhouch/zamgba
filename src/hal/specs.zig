@@ -2,6 +2,12 @@
 // Pure leaf values with zero internal module dependencies.
 // REF: https://www.coranac.com/tonc/text/hardware.htm#sec-memory
 
+const builtin = @import("builtin");
+
+/// True only when compiling for the actual GBA bare-metal target (Thumb/ARM + Freestanding OS)
+pub const is_gba_target = (builtin.target.os.tag == .freestanding) and
+    (builtin.target.cpu.arch == .thumb or builtin.target.cpu.arch == .arm);
+
 pub const MemorySections = struct {
     // System ROM: 00000000-00003FFF 16KiB,  32bit bus, read-only, executable
     //   Not used: 00004000-01FFFFFF
