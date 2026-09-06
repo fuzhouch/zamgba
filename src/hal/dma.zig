@@ -111,14 +111,6 @@ pub const Regs = struct {
     }
 
     pub inline fn forChannel(channel: Channel) Regs {
-        if (mock_regs_override) |m| {
-            return .{
-                .sad = &m.sad,
-                .dad = &m.dad,
-                .cnt_l = &m.cnt_l,
-                .cnt_h = &m.cnt_h,
-            };
-        }
         const base = baseForChannel(channel);
         return .{
             .sad = @as(*volatile u32, @ptrFromInt(base)),
@@ -133,7 +125,7 @@ pub const Regs = struct {
 pub inline fn copy16(channel: Channel, dest: [*]volatile u16, src: [*]const u16, halfwords: u16) DmaError!void {
     if (halfwords == 0) return error.InvalidCount;
 
-    if (is_gba_target or mock_regs_override != null) {
+    if (comptime is_gba_target) {
         const r = Regs.forChannel(channel);
         r.cnt_h.* = 0; // Disable channel before reprogramming
         r.sad.* = @truncate(@intFromPtr(src));
@@ -147,8 +139,22 @@ pub inline fn copy16(channel: Channel, dest: [*]volatile u16, src: [*]const u16,
             .enable = true,
         }));
     } else {
-        for (0..halfwords) |i| {
-            dest[i] = src[i];
+        if (mock_regs_override) |m| {
+            m.cnt_h = 0;
+            m.sad = @truncate(@intFromPtr(src));
+            m.dad = @truncate(@intFromPtr(dest));
+            m.cnt_l = halfwords;
+            m.cnt_h = @as(u16, @bitCast(DmaControl{
+                .transfer_type = .halfword_16,
+                .dest_adjust = .increment,
+                .src_adjust = .increment,
+                .start_time = .immediate,
+                .enable = true,
+            }));
+        } else {
+            for (0..halfwords) |i| {
+                dest[i] = src[i];
+            }
         }
     }
 }
@@ -157,7 +163,7 @@ pub inline fn copy16(channel: Channel, dest: [*]volatile u16, src: [*]const u16,
 pub inline fn copy32(channel: Channel, dest: [*]volatile u32, src: [*]const u32, words: u16) DmaError!void {
     if (words == 0) return error.InvalidCount;
 
-    if (is_gba_target or mock_regs_override != null) {
+    if (comptime is_gba_target) {
         const r = Regs.forChannel(channel);
         r.cnt_h.* = 0; // Disable channel before reprogramming
         r.sad.* = @truncate(@intFromPtr(src));
@@ -171,8 +177,22 @@ pub inline fn copy32(channel: Channel, dest: [*]volatile u32, src: [*]const u32,
             .enable = true,
         }));
     } else {
-        for (0..words) |i| {
-            dest[i] = src[i];
+        if (mock_regs_override) |m| {
+            m.cnt_h = 0;
+            m.sad = @truncate(@intFromPtr(src));
+            m.dad = @truncate(@intFromPtr(dest));
+            m.cnt_l = words;
+            m.cnt_h = @as(u16, @bitCast(DmaControl{
+                .transfer_type = .word_32,
+                .dest_adjust = .increment,
+                .src_adjust = .increment,
+                .start_time = .immediate,
+                .enable = true,
+            }));
+        } else {
+            for (0..words) |i| {
+                dest[i] = src[i];
+            }
         }
     }
 }
@@ -181,7 +201,7 @@ pub inline fn copy32(channel: Channel, dest: [*]volatile u32, src: [*]const u32,
 pub inline fn fill16(channel: Channel, dest: [*]volatile u16, value: u16, halfwords: u16) DmaError!void {
     if (halfwords == 0) return error.InvalidCount;
 
-    if (is_gba_target or mock_regs_override != null) {
+    if (comptime is_gba_target) {
         const r = Regs.forChannel(channel);
         r.cnt_h.* = 0;
         r.sad.* = @truncate(@intFromPtr(&value));
@@ -195,8 +215,22 @@ pub inline fn fill16(channel: Channel, dest: [*]volatile u16, value: u16, halfwo
             .enable = true,
         }));
     } else {
-        for (0..halfwords) |i| {
-            dest[i] = value;
+        if (mock_regs_override) |m| {
+            m.cnt_h = 0;
+            m.sad = @truncate(@intFromPtr(&value));
+            m.dad = @truncate(@intFromPtr(dest));
+            m.cnt_l = halfwords;
+            m.cnt_h = @as(u16, @bitCast(DmaControl{
+                .transfer_type = .halfword_16,
+                .dest_adjust = .increment,
+                .src_adjust = .fixed,
+                .start_time = .immediate,
+                .enable = true,
+            }));
+        } else {
+            for (0..halfwords) |i| {
+                dest[i] = value;
+            }
         }
     }
 }
@@ -205,7 +239,7 @@ pub inline fn fill16(channel: Channel, dest: [*]volatile u16, value: u16, halfwo
 pub inline fn fill32(channel: Channel, dest: [*]volatile u32, value: u32, words: u16) DmaError!void {
     if (words == 0) return error.InvalidCount;
 
-    if (is_gba_target or mock_regs_override != null) {
+    if (comptime is_gba_target) {
         const r = Regs.forChannel(channel);
         r.cnt_h.* = 0;
         r.sad.* = @truncate(@intFromPtr(&value));
@@ -219,8 +253,22 @@ pub inline fn fill32(channel: Channel, dest: [*]volatile u32, value: u32, words:
             .enable = true,
         }));
     } else {
-        for (0..words) |i| {
-            dest[i] = value;
+        if (mock_regs_override) |m| {
+            m.cnt_h = 0;
+            m.sad = @truncate(@intFromPtr(&value));
+            m.dad = @truncate(@intFromPtr(dest));
+            m.cnt_l = words;
+            m.cnt_h = @as(u16, @bitCast(DmaControl{
+                .transfer_type = .word_32,
+                .dest_adjust = .increment,
+                .src_adjust = .fixed,
+                .start_time = .immediate,
+                .enable = true,
+            }));
+        } else {
+            for (0..words) |i| {
+                dest[i] = value;
+            }
         }
     }
 }
