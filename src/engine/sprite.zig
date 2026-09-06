@@ -9,6 +9,11 @@ const Collision = physics.Collision;
 
 const gfx2d = @import("gfx2d/gfx2d.zig");
 const StaticTile = gfx2d.StaticTile;
+const AnimatedTiles = gfx2d.AnimatedTiles;
+const SpriteSheet = gfx2d.SpriteSheet;
+const AnimationMode = gfx2d.AnimationMode;
+const AnimationTag = gfx2d.AnimationTag;
+const TileError = gfx2d.TileError;
 
 pub const SpriteError = error{
     InvalidDimensions,
@@ -119,40 +124,40 @@ pub const Sprite = struct {
             .collided_y = self.moveAxis(collision_map, .y),
         };
     }
-
-    /// Compiles the engine-level sprite and provided static tile into a hardware OAM attribute.
-    pub fn toOamAttr(self: *const Sprite, tile_attr: StaticTile) hal.oam.ObjAttr {
-        if (!self.visible) {
-            return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
-        }
-
-        const shape_size = getShapeAndSize(self.aabb.width, self.aabb.height) catch ShapeSize{
-            .shape = hal.oam.Shape.SQUARE,
-            .size = hal.oam.Size.SIZE_0,
-        };
-
-        const y_val: i32 = @intCast(self.aabb.y.toInt());
-        const x_val: i32 = @intCast(self.aabb.x.toInt());
-
-        const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
-        const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
-
-        const bpp_bit: u16 = if (tile_attr.bpp == .bpp8) (1 << 13) else 0;
-        const h_flip_bit: u16 = if (self.h_flip) (1 << 12) else 0;
-        const v_flip_bit: u16 = if (self.v_flip) (1 << 13) else 0;
-
-        const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
-        const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
-        const attr2: u16 = (tile_attr.tile_index & 0x03FF) | (@as(u16, tile_attr.palette_bank & 0x0F) << 12);
-
-        return .{
-            .attr0 = attr0,
-            .attr1 = attr1,
-            .attr2 = attr2,
-            .fill = 0,
-        };
-    }
 };
+
+/// Compiles an engine-level sprite and provided static tile into a hardware OAM attribute.
+fn compileOamAttr(spr: *const Sprite, tile_attr: StaticTile) hal.oam.ObjAttr {
+    if (!spr.visible) {
+        return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
+    }
+
+    const shape_size = getShapeAndSize(spr.aabb.width, spr.aabb.height) catch ShapeSize{
+        .shape = hal.oam.Shape.SQUARE,
+        .size = hal.oam.Size.SIZE_0,
+    };
+
+    const y_val: i32 = @intCast(spr.aabb.y.toInt());
+    const x_val: i32 = @intCast(spr.aabb.x.toInt());
+
+    const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
+    const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
+
+    const bpp_bit: u16 = if (tile_attr.bpp == .bpp8) (1 << 13) else 0;
+    const h_flip_bit: u16 = if (spr.h_flip) (1 << 12) else 0;
+    const v_flip_bit: u16 = if (spr.v_flip) (1 << 13) else 0;
+
+    const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
+    const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
+    const attr2: u16 = (tile_attr.tile_index & 0x03FF) | (@as(u16, tile_attr.palette_bank & 0x0F) << 12);
+
+    return .{
+        .attr0 = attr0,
+        .attr1 = attr1,
+        .attr2 = attr2,
+        .fill = 0,
+    };
+}
 
 /// Composite structure: Combines a Sprite with a StaticTile.
 pub const StaticSprite = struct {
@@ -167,12 +172,63 @@ pub const StaticSprite = struct {
     }
 
     pub fn toOamAttr(self: *const StaticSprite) hal.oam.ObjAttr {
-        return self.sprite.toOamAttr(self.tile);
+        return compileOamAttr(&self.sprite, self.tile);
     }
 
     /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
     pub fn fillSolidColor(self: *const StaticSprite, color: gfx2d.Color) gfx2d.TileError!void {
         return self.tile.fillSolidColor(self.sprite.aabb.width, self.sprite.aabb.height, color);
+    }
+};
+
+/// Composite structure: Combines a spatial Sprite with AnimatedTiles.
+pub const AnimatedSprite = struct {
+    sprite: Sprite,
+    tiles: AnimatedTiles,
+
+    /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
+    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: Fixed24_8, y: Fixed24_8) (TileError || SpriteError)!AnimatedSprite {
+        const tiles = try AnimatedTiles.init(sheet, mode);
+        const spr = try Sprite.init(x, y, sheet.width, sheet.height);
+        return .{
+            .sprite = spr,
+            .tiles = tiles,
+        };
+    }
+
+    /// Releases any allocated VRAM slot back to the VramAllocator.
+    pub fn deinit(self: *AnimatedSprite) void {
+        self.tiles.deinit();
+    }
+
+    /// Selects an animation tag by name (e.g. "fly", "run", "idle").
+    pub fn setAnimation(self: *AnimatedSprite, tag_name: []const u8) bool {
+        return self.tiles.setAnimation(tag_name);
+    }
+
+    /// Selects an animation tag by index without runtime string lookup.
+    pub fn setAnimationByIndex(self: *AnimatedSprite, tag_index: usize) bool {
+        return self.tiles.setAnimationByIndex(tag_index);
+    }
+
+    /// Directly sets the current frame index.
+    pub fn setFrame(self: *AnimatedSprite, frame_index: usize) void {
+        self.tiles.setFrame(frame_index);
+    }
+
+    /// Advances the animation frame timer by 1 tick (~16.6ms at 60Hz).
+    pub fn update(self: *AnimatedSprite) void {
+        self.tiles.update();
+    }
+
+    /// Compiles into a GBA hardware OAM attribute.
+    pub fn toOamAttr(self: *const AnimatedSprite) hal.oam.ObjAttr {
+        return compileOamAttr(&self.sprite, self.tiles.getTile());
+    }
+
+    /// Accesses the underlying Sprite component.
+    pub fn getSprite(self: *AnimatedSprite) *Sprite {
+        return &self.sprite;
     }
 };
 
@@ -214,7 +270,7 @@ test "SPR004: toOamAttr encoding with StaticTile" {
     var spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 16, 32); // Vertical (shape 2, size 2)
     const tile_attr = StaticTile{ .tile_index = 4, .palette_bank = 2, .bpp = .bpp4 };
 
-    const attr = spr.toOamAttr(tile_attr);
+    const attr = compileOamAttr(&spr, tile_attr);
     // attr0: Y=20 (0x14), shape=2 -> (2 << 14) | 20 = 0x8014
     try std.testing.expectEqual(@as(u16, 0x8014), attr.attr0);
     // attr1: X=10 (0x0A), size=2 -> (2 << 14) | 10 = 0x800A
@@ -292,7 +348,7 @@ test "SPR010: toOamAttr horizontal and vertical flip encoding" {
     spr.v_flip = true;
     const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp4 };
 
-    const attr = spr.toOamAttr(tile_attr);
+    const attr = compileOamAttr(&spr, tile_attr);
     const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
     try std.testing.expectEqual(expected_attr1, attr.attr1);
 }
@@ -301,7 +357,7 @@ test "SPR011: toOamAttr 8-bpp color mode encoding" {
     const spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 32, 32);
     const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp8 };
 
-    const attr = spr.toOamAttr(tile_attr);
+    const attr = compileOamAttr(&spr, tile_attr);
     const expected_attr0: u16 = 20 | (1 << 13);
     try std.testing.expectEqual(expected_attr0, attr.attr0);
 }
@@ -333,6 +389,29 @@ test "SPR014: StaticSprite composition and toOamAttr with custom palette bank" {
     try std.testing.expectEqual(@as(u16, 10), attr.attr0);
     try std.testing.expectEqual(@as(u16, 5), attr.attr1);
     try std.testing.expectEqual(@as(u16, (2 << 12) | 1), attr.attr2);
+}
+
+test "ANI007: AnimatedSprite composition and toOamAttr output" {
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 2,
+        .tiles = &[_]u8{0} ** 256,
+        .durations_ms = &[_]u16{ 100, 100 },
+        .tags = &[_]AnimationTag{},
+    };
+
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30));
+    defer anim_spr.deinit();
+
+    const spr = anim_spr.getSprite();
+    spr.h_flip = true;
+
+    const attr = anim_spr.toOamAttr();
+    try std.testing.expectEqual(@as(u16, 30), attr.attr0 & 0x00FF);
+    try std.testing.expectEqual(@as(u16, 20 | (1 << 14) | (1 << 12)), attr.attr1);
 }
 
 fn mockAllPassable(_: u16, _: u16) bool {

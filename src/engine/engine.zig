@@ -76,15 +76,17 @@ pub fn setDmaVblankBudget(bytes: usize) void {
 /// Registers a sprite to be rendered in the current frame.
 /// Dynamically maps the high-level sprite into the next available OAM slot.
 pub fn drawSprite(spr: anytype) void {
-    if (sprite_count >= 128) return; // GBA hardware limit
     const T = @TypeOf(spr);
     const PtrInfo = @typeInfo(T);
     const TargetType = if (PtrInfo == .pointer) PtrInfo.pointer.child else T;
 
-    if (@hasDecl(TargetType, "toOamAttr")) {
-        shadow_oam[sprite_count] = spr.toOamAttr();
-        sprite_count += 1;
+    if (!@hasDecl(TargetType, "toOamAttr")) {
+        @compileError("Type passed to engine.drawSprite must implement 'toOamAttr() hal.oam.ObjAttr'");
     }
+
+    if (sprite_count >= 128) return; // GBA hardware limit
+    shadow_oam[sprite_count] = spr.toOamAttr();
+    sprite_count += 1;
 }
 
 /// Starts the game loop using the global engine singleton.
@@ -127,7 +129,7 @@ pub const physics = @import("physics/physics.zig");
 pub const vram_allocator = gfx2d.vram_allocator;
 pub const dma_queue = gfx2d.dma_queue;
 pub const AnimatedTiles = gfx2d.AnimatedTiles;
-pub const AnimatedSprite = @import("animated_sprite.zig").AnimatedSprite;
+pub const AnimatedSprite = @import("sprite.zig").AnimatedSprite;
 pub const AnimationMode = gfx2d.AnimationMode;
 
 test {
