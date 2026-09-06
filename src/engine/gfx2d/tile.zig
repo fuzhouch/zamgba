@@ -475,3 +475,31 @@ test "ANI006: pingpong animation direction reverses correctly" {
     anim_tiles.update();
     try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
 }
+
+test "ANI008: AnimatedTiles without tags loops all frames forward by default" {
+    const dummy_tiles: [3 * 128]u8 align(4) = [_]u8{0} ** (3 * 128);
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 3,
+        .tiles = &dummy_tiles,
+        .durations_ms = &[_]u16{ 16, 16, 16 },
+        .tags = &[_]AnimationTag{},
+    };
+
+    var anim_tiles = try AnimatedTiles.init(&dummy_sheet, .static);
+    defer anim_tiles.deinit();
+
+    try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
+
+    anim_tiles.update();
+    try std.testing.expectEqual(@as(usize, 1), anim_tiles.current_frame);
+
+    anim_tiles.update();
+    try std.testing.expectEqual(@as(usize, 2), anim_tiles.current_frame);
+
+    anim_tiles.update();
+    try std.testing.expectEqual(@as(usize, 0), anim_tiles.current_frame);
+}
