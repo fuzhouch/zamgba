@@ -34,10 +34,10 @@ export fn main() noreturn {
     engine.initHardware();
 
     // 1. Initialize high-level sprite state (8x8 square sprite with StaticTile)
-    spr = engine.StaticSprite.init(116, 76, 8, 8, .{
+    spr = engine.StaticSprite.init(engine.physics.Fixed24_8.fromInt(116), engine.physics.Fixed24_8.fromInt(76), 8, 8, .{
         .tile_index = 0,
         .palette_bank = 0,
-    });
+    }) catch unreachable;
 
     // 2. Fill solid white color tile graphics & palette to hardware VRAM/PALRAM
     spr.fillSolidColor(engine.Color.WHITE) catch {};

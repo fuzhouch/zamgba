@@ -38,10 +38,10 @@ export fn main() noreturn {
 
     // 1. Instantiate our game state on the stack
     var game = Game{
-        .spr = engine.StaticSprite.init(116, 76, 8, 8, .{
+        .spr = engine.StaticSprite.init(engine.physics.Fixed24_8.fromInt(116), engine.physics.Fixed24_8.fromInt(76), 8, 8, .{
             .tile_index = 0,
             .palette_bank = 0,
-        }),
+        }) catch unreachable,
         .dx = 1,
     };
 

@@ -147,7 +147,7 @@ test "ENG001: Engine singleton initHardware and drawSprite staging" {
         try std.testing.expectEqual(@as(u16, 160), obj.attr0);
     }
 
-    const test_spr = StaticSprite.init(10, 20, 8, 8, .{});
+    const test_spr = try StaticSprite.init(physics.Fixed24_8.fromInt(10), physics.Fixed24_8.fromInt(20), 8, 8, .{});
     drawSprite(&test_spr);
     try std.testing.expectEqual(@as(usize, 1), sprite_count);
     try std.testing.expectEqual(@as(u16, 20), shadow_oam[0].attr0 & 0x00FF);

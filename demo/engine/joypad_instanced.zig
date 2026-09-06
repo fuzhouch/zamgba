@@ -78,10 +78,10 @@ export fn main() noreturn {
     const start_y: i32 = @intCast((hal.Screen.HEIGHT_PIXELS - @as(i32, @intCast(spr_height))) / 2);
 
     var game = Game{
-        .spr = engine.StaticSprite.init(start_x, start_y, spr_width, spr_height, .{
+        .spr = engine.StaticSprite.init(engine.physics.Fixed24_8.fromInt(start_x), engine.physics.Fixed24_8.fromInt(start_y), spr_width, spr_height, .{
             .tile_index = 0,
             .palette_bank = 0,
-        }),
+        }) catch unreachable,
         .input = .{},
         .current_color = engine.Color.WHITE,
     };

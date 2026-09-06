@@ -41,7 +41,7 @@ const Game = struct {
     pub fn init() Game {
         // 1. Initialize Player using AnimatedSprite in streaming mode
         // Only 1 frame (32 slot units = 1024 bytes) is allocated in VRAM!
-        var player_anim = engine.AnimatedSprite.init(&broom.sheet, .streaming, PLAYER_START_X, PLAYER_START_Y) catch unreachable;
+        var player_anim = engine.AnimatedSprite.init(&broom.sheet, .streaming, Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y)) catch unreachable;
         _ = player_anim.setAnimation("fly");
 
         // 2. Configure collision layers on the underlying Sprite
@@ -52,14 +52,14 @@ const Game = struct {
         var self = Game{
             .player = player_anim,
             .enemies = [_]engine.StaticSprite{
-                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_1_START_X), Fixed24_8.fromInt(ENEMY_1_START_Y), 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
-                }),
-                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
+                }) catch unreachable,
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_2_START_X), Fixed24_8.fromInt(ENEMY_2_START_Y), 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
-                }),
+                }) catch unreachable,
             },
             .map = CollisionMap.init(.size_256x256, isBorderSolid, .solid),
             .input = .{},

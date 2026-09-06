@@ -46,20 +46,20 @@ const Game = struct {
     pub fn init() Game {
         var self = Game{
             // Player is 32x32 matching the flying animation bounding box
-            .player = engine.StaticSprite.init(PLAYER_START_X, PLAYER_START_Y, 32, 32, .{
+            .player = engine.StaticSprite.init(Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y), 32, 32, .{
                 .tile_index = 0,
                 .palette_bank = 0,
                 .bpp = .bpp8,
-            }),
+            }) catch unreachable,
             .enemies = [_]engine.StaticSprite{
-                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 16, 32, .{
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_1_START_X), Fixed24_8.fromInt(ENEMY_1_START_Y), 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
-                }),
-                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 16, 32, .{
+                }) catch unreachable,
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_2_START_X), Fixed24_8.fromInt(ENEMY_2_START_Y), 16, 32, .{
                     .tile_index = 256,
                     .palette_bank = 1,
-                }),
+                }) catch unreachable,
             },
             .map = CollisionMap.init(.size_256x256, isBorderSolid, .solid),
             .input = .{},

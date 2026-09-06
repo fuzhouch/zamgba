@@ -38,19 +38,19 @@ const Game = struct {
 
     pub fn init() Game {
         var self = Game{
-            .player = engine.StaticSprite.init(PLAYER_START_X, PLAYER_START_Y, 8, 8, .{
+            .player = engine.StaticSprite.init(Fixed24_8.fromInt(PLAYER_START_X), Fixed24_8.fromInt(PLAYER_START_Y), 8, 8, .{
                 .tile_index = 0,
                 .palette_bank = 0,
-            }),
+            }) catch unreachable,
             .enemies = [_]engine.StaticSprite{
-                engine.StaticSprite.init(ENEMY_1_START_X, ENEMY_1_START_Y, 8, 8, .{
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_1_START_X), Fixed24_8.fromInt(ENEMY_1_START_Y), 8, 8, .{
                     .tile_index = 1,
                     .palette_bank = 1,
-                }),
-                engine.StaticSprite.init(ENEMY_2_START_X, ENEMY_2_START_Y, 8, 8, .{
+                }) catch unreachable,
+                engine.StaticSprite.init(Fixed24_8.fromInt(ENEMY_2_START_X), Fixed24_8.fromInt(ENEMY_2_START_Y), 8, 8, .{
                     .tile_index = 1,
                     .palette_bank = 1,
-                }),
+                }) catch unreachable,
             },
             .map = CollisionMap.init(.size_256x256, isBorderSolid, .solid),
             .input = .{},

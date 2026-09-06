@@ -2,11 +2,13 @@ const std = @import("std");
 const hal = @import("zamgba-hal");
 const gfx2d = @import("gfx2d/gfx2d.zig");
 const Sprite = @import("sprite.zig").Sprite;
+const SpriteError = @import("sprite.zig").SpriteError;
 const SpriteSheet = gfx2d.SpriteSheet;
 const AnimatedTiles = gfx2d.AnimatedTiles;
 const AnimationMode = gfx2d.AnimationMode;
 const AnimationTag = gfx2d.AnimationTag;
 const TileError = gfx2d.TileError;
+const Fixed24_8 = @import("physics/physics.zig").Fixed24_8;
 
 /// Composite structure: Combines a spatial Sprite with AnimatedTiles.
 pub const AnimatedSprite = struct {
@@ -14,9 +16,9 @@ pub const AnimatedSprite = struct {
     tiles: AnimatedTiles,
 
     /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
-    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: i32, y: i32) TileError!AnimatedSprite {
+    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: Fixed24_8, y: Fixed24_8) (TileError || SpriteError)!AnimatedSprite {
         const tiles = try AnimatedTiles.init(sheet, mode);
-        const spr = Sprite.init(x, y, sheet.width, sheet.height);
+        const spr = try Sprite.init(x, y, sheet.width, sheet.height);
         return .{
             .sprite = spr,
             .tiles = tiles,
@@ -71,7 +73,7 @@ test "ANI007: AnimatedSprite composition and toOamAttr output" {
         .tags = &[_]AnimationTag{},
     };
 
-    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, 20, 30);
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30));
     defer anim_spr.deinit();
 
     const spr = anim_spr.getSprite();

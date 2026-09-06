@@ -70,24 +70,12 @@ pub const Sprite = struct {
 
     visible: bool = true,
 
-    /// Initialize a Sprite with integer pixel coordinates and dimensions.
-    pub fn init(x: i32, y: i32, width: u16, height: u16) Sprite {
-        return .{
-            .aabb = AABB.fromInt(x, y, width, height),
-        };
-    }
-
-    /// Initialize a Sprite with Fixed24_8 sub-pixel coordinates.
-    pub fn initFixed(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16) Sprite {
+    /// Initialize a Sprite with Fixed24_8 sub-pixel coordinates and validates GBA hardware sprite dimensions.
+    pub fn init(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16) SpriteError!Sprite {
+        _ = try getShapeAndSize(width, height);
         return .{
             .aabb = AABB.init(x, y, width, height),
         };
-    }
-
-    /// Initializes a sprite and verifies its width and height are valid GBA sprite dimensions.
-    pub fn initChecked(x: i32, y: i32, width: u16, height: u16) SpriteError!Sprite {
-        _ = try getShapeAndSize(width, height);
-        return init(x, y, width, height);
     }
 
     /// Check if this sprite can interact with another sprite based on 16-bit layer and mask filtering.
@@ -168,9 +156,9 @@ pub const StaticSprite = struct {
     sprite: Sprite,
     tile: StaticTile = .{},
 
-    pub fn init(x: i32, y: i32, width: u16, height: u16, tile_attr: StaticTile) StaticSprite {
+    pub fn init(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16, tile_attr: StaticTile) SpriteError!StaticSprite {
         return .{
-            .sprite = Sprite.init(x, y, width, height),
+            .sprite = try Sprite.init(x, y, width, height),
             .tile = tile_attr,
         };
     }
@@ -185,12 +173,12 @@ pub const StaticSprite = struct {
     }
 };
 
-test "SPR001: initChecked validates dimensions" {
-    const spr = try Sprite.initChecked(10, 20, 8, 8);
+test "SPR001: init validates dimensions" {
+    const spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 8, 8);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.width);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.height);
 
-    try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.initChecked(10, 20, 12, 12));
+    try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 12, 12));
 }
 
 test "SPR002: getShapeAndSize valid dimensions" {
@@ -220,7 +208,7 @@ test "SPR003: getShapeAndSize invalid dimensions" {
 }
 
 test "SPR004: toOamAttr encoding with StaticTile" {
-    var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
+    var spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 16, 32); // Vertical (shape 2, size 2)
     const tile_attr = StaticTile{ .tile_index = 4, .palette_bank = 2, .bpp = .bpp4 };
 
     const attr = spr.toOamAttr(tile_attr);
@@ -240,7 +228,7 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     const map = CollisionMap.init(.size_256x256, mockWallAtTile3_0, .solid);
 
     // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
-    var spr = Sprite.init(8, 0, 8, 8);
+    var spr = try Sprite.init(Fixed24_8.fromInt(8), Fixed24_8.fromInt(0), 8, 8);
     spr.velocity_x = Fixed24_8.fromInt(8); // Move right by 8 pixels per step
 
     // Step 1: Moves from x=8 to x=16 (tile 2) -> Clear
@@ -264,9 +252,9 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
 }
 
 test "SPR008: Sprite collision via AABB" {
-    const spr1 = Sprite.init(10, 10, 16, 16);
-    const spr2 = Sprite.init(20, 20, 16, 16);
-    const spr3 = Sprite.init(50, 50, 16, 16);
+    const spr1 = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16);
+    const spr2 = try Sprite.init(Fixed24_8.fromInt(20), Fixed24_8.fromInt(20), 16, 16);
+    const spr3 = try Sprite.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(50), 16, 16);
 
     try std.testing.expect(spr1.aabb.isColliding(spr2.aabb));
     try std.testing.expect(spr1.aabb.collidesWith(spr2.aabb));
@@ -274,15 +262,15 @@ test "SPR008: Sprite collision via AABB" {
 }
 
 test "SPR009: Sprite layer and mask filtering" {
-    var player = Sprite.init(0, 0, 16, 16);
+    var player = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 16, 16);
     player.layer = Collision.layer(0); // Layer 0: Player
     player.mask = Collision.layer(1); // Mask: Only Enemy (Layer 1)
 
-    var enemy = Sprite.init(0, 0, 16, 16);
+    var enemy = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 16, 16);
     enemy.layer = Collision.layer(1); // Layer 1: Enemy
     enemy.mask = Collision.layer(0); // Mask: Only Player (Layer 0)
 
-    var item = Sprite.init(0, 0, 8, 8);
+    var item = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 8, 8);
     item.layer = Collision.layer(2); // Layer 2: Item
     item.mask = Collision.layer(3); // Mask: Layer 3
 
@@ -296,7 +284,7 @@ test "SPR009: Sprite layer and mask filtering" {
 }
 
 test "SPR010: toOamAttr horizontal and vertical flip encoding" {
-    var spr = Sprite.init(10, 20, 16, 16);
+    var spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 16, 16);
     spr.h_flip = true;
     spr.v_flip = true;
     const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp4 };
@@ -307,7 +295,7 @@ test "SPR010: toOamAttr horizontal and vertical flip encoding" {
 }
 
 test "SPR011: toOamAttr 8-bpp color mode encoding" {
-    const spr = Sprite.init(10, 20, 32, 32);
+    const spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 32, 32);
     const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp8 };
 
     const attr = spr.toOamAttr(tile_attr);
@@ -316,7 +304,7 @@ test "SPR011: toOamAttr 8-bpp color mode encoding" {
 }
 
 test "SPR013: StaticSprite composition and toOamAttr output" {
-    const static_spr = StaticSprite.init(15, 25, 32, 16, .{
+    const static_spr = try StaticSprite.init(Fixed24_8.fromInt(15), Fixed24_8.fromInt(25), 32, 16, .{
         .tile_index = 12,
         .palette_bank = 4,
         .bpp = .bpp4,
@@ -330,7 +318,7 @@ test "SPR013: StaticSprite composition and toOamAttr output" {
 }
 
 test "SPR014: StaticSprite composition and toOamAttr with custom palette bank" {
-    const solid_spr = StaticSprite.init(5, 10, 8, 8, .{
+    const solid_spr = try StaticSprite.init(Fixed24_8.fromInt(5), Fixed24_8.fromInt(10), 8, 8, .{
         .tile_index = 1,
         .palette_bank = 2,
     });

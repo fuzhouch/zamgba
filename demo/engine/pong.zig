@@ -34,18 +34,18 @@ const Game = struct {
 
     pub fn init() Game {
         var self = Game{
-            .player = engine.StaticSprite.init(PLAYER_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
+            .player = engine.StaticSprite.init(Fixed24_8.fromInt(PLAYER_X), Fixed24_8.fromInt((SCREEN_H - PADDLE_H) / 2), PADDLE_W, PADDLE_H, .{
                 .tile_index = 0,
                 .palette_bank = 0,
-            }),
-            .ai = engine.StaticSprite.init(AI_X, (SCREEN_H - PADDLE_H) / 2, PADDLE_W, PADDLE_H, .{
+            }) catch unreachable,
+            .ai = engine.StaticSprite.init(Fixed24_8.fromInt(AI_X), Fixed24_8.fromInt((SCREEN_H - PADDLE_H) / 2), PADDLE_W, PADDLE_H, .{
                 .tile_index = 4,
                 .palette_bank = 1,
-            }),
-            .ball = engine.StaticSprite.init((SCREEN_W - BALL_SIZE) / 2, (SCREEN_H - BALL_SIZE) / 2, BALL_SIZE, BALL_SIZE, .{
+            }) catch unreachable,
+            .ball = engine.StaticSprite.init(Fixed24_8.fromInt((SCREEN_W - BALL_SIZE) / 2), Fixed24_8.fromInt((SCREEN_H - BALL_SIZE) / 2), BALL_SIZE, BALL_SIZE, .{
                 .tile_index = 8,
                 .palette_bank = 2,
-            }),
+            }) catch unreachable,
             .input = .{},
         };
 
