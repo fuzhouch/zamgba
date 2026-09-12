@@ -7,7 +7,9 @@ The Zamgba SDK utilizes a consolidated, highly pragmatic **2-Layer Architecture*
 ```mermaid
 graph TD
     subgraph High-Level Framework (Developer Facing)
-        E[engine.Engine] --> S[engine.Sprite]
+        E[engine.Engine] --> SS[engine.StaticSprite / AnimatedSprite]
+        SS --> S[engine.Sprite - Spatial/Physics]
+        SS --> T[engine.StaticTile / AnimatedTiles - Graphics]
         E --> G[engine.gfx2d.Drawing Algorithms]
     end
 
@@ -17,8 +19,8 @@ graph TD
         H --> R[hal.MemorySections]
     end
 
-    E ==>|1. Synchronizes and flushes graphics to| O
-    S ==>|2. Translates logical coordinates to| O
+    E ==>|1. Stages to shadow OAM & flushes graphics to| O
+    SS ==>|2. Combines spatial + tile metadata into| O
 ```
 
 ---
@@ -42,11 +44,12 @@ Maps GBA physical registers and exposes safe, atomic timing controls.
 This is the **Game Engine Layer** (`zamgba.engine`). It is the primary API interface for the game developer, combining game loop orchestration, logical entities, and 2D drawing routines.
 
 ### A. Engine Orchestration (`zamgba.engine`)
-*   **`engine.Sprite`**: A high-level entity representing a renderable object on screen. Holds friendly logical variables (`x: i32`, `y: i32`, `width`, `height`). It uses `toOamAttr()` to automatically calculate the GBA's complex shape/size bitmasks under the hood.
+*   **`engine.Sprite`**: A pure spatial and physics entity representing position (`Fixed24_8` sub-pixel coordinates), bounding box (`AABB`), velocity, collision layers/masks, and orientation (horizontal/vertical flip). It deliberately does **not** store graphical tile data.
+*   **`engine.StaticSprite` / `engine.AnimatedSprite`**: Composite renderable entities combining `Sprite` with graphical tile descriptors (`StaticTile` or `AnimatedTiles`). They implement `toOamAttr() hal.oam.ObjAttr` to calculate the GBA's complex shape, size, palette, and tile index bitmasks.
 *   **`engine.Engine`**:
     *   **Shadow OAM**: Manages an internal `shadow_oam: [128]hal.oam.ObjAttr` array to stage sprite data before rendering.
-    *   **`drawSprite(spr)`**: Dynamically maps high-level sprites to the next available physical slot (0 to 127) for the current frame.
-    *   **`nextFrame()`**: Bundles frame timing (`hal.waitForVBlank()`), graphics flushing (copying the shadow buffer to `hal.MemorySections.OAM`), and dynamic sprite slot resets.
+    *   **`drawSprite(spr)`**: Accepts any renderable entity implementing `toOamAttr() hal.oam.ObjAttr` (enforced with compile-time assertion `@compileError`), dynamically staging it to the next available physical slot (0 to 127) for the current frame.
+    *   **`nextFrame()`**: Bundles frame timing (`hal.waitForVBlank()`), graphics flushing (copying the shadow buffer to `hal.MemorySections.OAM`), DMA streaming queues, and dynamic sprite slot resets.
     *   **`run(context)`**: The compile-time monomorphized loop runner. It accepts either:
         1.  **Static Namespaces (`@This()` of a file)**: Treating files as implicit singleton structs for easy prototyping (state resides in file-scope variables).
         2.  **Instance Pointers (`&game`)**: Passing fully encapsulated game structs, supporting level transitions, and cartridge save state serialization (SRAM).
@@ -60,8 +63,8 @@ Provides platform-agnostic, mathematics-based drawing routines for procedural re
 
 ## 3. Key Design Tradeoffs & Benefits
 
-1.  **Zero-Cost Abstractions**: By leveraging Zig generics (`anytype` and `@hasDecl`), `Engine.run` resolves completely at compile-time. No virtual tables (vtables) or dynamic pointer dispatches are generated in the compiled machine code, leaving maximum performance for the GBA's 16.78 MHz CPU.
-2.  **Encapsulation of Workarounds**: Hardware workarounds (like OAM Shadowing) are tucked away into the Engine Core, allowing developers to draw sprites smoothly in a standard 60 FPS update-and-render game loop.
+1.  **Zero-Cost Abstractions**: By leveraging Zig generics (`anytype` with compile-time type verification), `Engine.run` and `Engine.drawSprite` resolve completely at compile-time. No virtual tables (vtables) or dynamic pointer dispatches are generated in the compiled machine code, leaving maximum performance for the GBA's 16.78 MHz CPU.
+2.  **Encapsulation of Workarounds**: Hardware workarounds (like OAM Shadowing and VBlank DMA flushes) are tucked away into the Engine Core, allowing developers to draw sprites smoothly in a standard 60 FPS update-and-render game loop.
 3.  **Strict Boundary**: The division between raw hardware representations (`hal`) and state management/game logic (`engine`) makes the architecture clear and maintainable.
 
 ## 4. Strict Layering Design Rules

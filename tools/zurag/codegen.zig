@@ -171,7 +171,7 @@ pub fn generateZigSource(
     writer.print("pub const height: u16 = {};\n", .{frame0.rect.h}) catch return error.WriteError;
     writer.print("pub const frame_count: u16 = {};\n", .{meta.frames.len}) catch return error.WriteError;
     writer.print("pub const tile_count_per_frame: u16 = {};\n", .{sliced_frames[0].tile_count}) catch return error.WriteError;
-    writer.print("pub const bpp_mode: engine.BppMode = {s};\n", .{bpp_enum_str}) catch return error.WriteError;
+    writer.print("pub const bpp_mode: hal.specs.BppMode = {s};\n", .{bpp_enum_str}) catch return error.WriteError;
     writer.print("pub const shape: u16 = hal.oam.Shape.{s};\n", .{shape_size.shape_name}) catch return error.WriteError;
     writer.print("pub const size: u16 = hal.oam.Size.{s};\n", .{shape_size.size_name}) catch return error.WriteError;
     writer.print("pub const default_palette_bank: u8 = {};\n\n", .{sliced_frames[0].detected_bank}) catch return error.WriteError;
@@ -315,4 +315,53 @@ test "GEN005: generateZigSource with --no-palette omits palette definition" {
     try std.testing.expect(std.mem.indexOf(u8, out, "pub const frame_tiles") != null);
     try std.testing.expect(std.mem.indexOf(u8, out, "pub const palette: [") == null);
     try std.testing.expect(std.mem.indexOf(u8, out, ".palette = null") != null);
+}
+
+test "GEN006: getHwShapeAndSize maps all valid GBA OBJ dimensions and rejects invalid" {
+    // Square
+    const s0 = getHwShapeAndSize(8, 8).?;
+    try std.testing.expectEqualStrings("SQUARE", s0.shape_name);
+    try std.testing.expectEqualStrings("SIZE_0", s0.size_name);
+    const s1 = getHwShapeAndSize(16, 16).?;
+    try std.testing.expectEqualStrings("SQUARE", s1.shape_name);
+    try std.testing.expectEqualStrings("SIZE_1", s1.size_name);
+    const s2 = getHwShapeAndSize(32, 32).?;
+    try std.testing.expectEqualStrings("SQUARE", s2.shape_name);
+    try std.testing.expectEqualStrings("SIZE_2", s2.size_name);
+    const s3 = getHwShapeAndSize(64, 64).?;
+    try std.testing.expectEqualStrings("SQUARE", s3.shape_name);
+    try std.testing.expectEqualStrings("SIZE_3", s3.size_name);
+
+    // Horizontal
+    const h0 = getHwShapeAndSize(16, 8).?;
+    try std.testing.expectEqualStrings("HORIZONTAL", h0.shape_name);
+    try std.testing.expectEqualStrings("SIZE_0", h0.size_name);
+    const h1 = getHwShapeAndSize(32, 8).?;
+    try std.testing.expectEqualStrings("HORIZONTAL", h1.shape_name);
+    try std.testing.expectEqualStrings("SIZE_1", h1.size_name);
+    const h2 = getHwShapeAndSize(32, 16).?;
+    try std.testing.expectEqualStrings("HORIZONTAL", h2.shape_name);
+    try std.testing.expectEqualStrings("SIZE_2", h2.size_name);
+    const h3 = getHwShapeAndSize(64, 32).?;
+    try std.testing.expectEqualStrings("HORIZONTAL", h3.shape_name);
+    try std.testing.expectEqualStrings("SIZE_3", h3.size_name);
+
+    // Vertical
+    const v0 = getHwShapeAndSize(8, 16).?;
+    try std.testing.expectEqualStrings("VERTICAL", v0.shape_name);
+    try std.testing.expectEqualStrings("SIZE_0", v0.size_name);
+    const v1 = getHwShapeAndSize(8, 32).?;
+    try std.testing.expectEqualStrings("VERTICAL", v1.shape_name);
+    try std.testing.expectEqualStrings("SIZE_1", v1.size_name);
+    const v2 = getHwShapeAndSize(16, 32).?;
+    try std.testing.expectEqualStrings("VERTICAL", v2.shape_name);
+    try std.testing.expectEqualStrings("SIZE_2", v2.size_name);
+    const v3 = getHwShapeAndSize(32, 64).?;
+    try std.testing.expectEqualStrings("VERTICAL", v3.shape_name);
+    try std.testing.expectEqualStrings("SIZE_3", v3.size_name);
+
+    // Invalid
+    try std.testing.expect(getHwShapeAndSize(10, 10) == null);
+    try std.testing.expect(getHwShapeAndSize(8, 64) == null);
+    try std.testing.expect(getHwShapeAndSize(128, 128) == null);
 }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const Sprite = @import("../sprite.zig").Sprite;
+const Fixed24_8 = @import("math.zig").Fixed24_8;
 
 /// Checks if `target` collides with any sprite in the `others` slice.
 /// Automatically skips `target` if it resides in the same slice.
@@ -55,14 +56,14 @@ pub fn checkAllOverlaps(
 test "checkOverlap finds matching colliding sprite" {
     const Collision = @import("layer.zig").Collision;
 
-    var player = Sprite.init(10, 10, 16, 16);
+    var player = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16);
     player.layer = Collision.layer(0); // Player
-    player.mask = Collision.layer(1);  // Only interacts with Enemy
+    player.mask = Collision.layer(1); // Only interacts with Enemy
 
     var enemies = [_]Sprite{
-        Sprite.init(50, 50, 16, 16), // Enemy 0: Far away (no collision)
-        Sprite.init(15, 15, 16, 16), // Enemy 1: Overlaps player (collision!)
-        Sprite.init(12, 12, 16, 16), // Enemy 2: Also overlaps
+        try Sprite.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(50), 16, 16), // Enemy 0: Far away (no collision)
+        try Sprite.init(Fixed24_8.fromInt(15), Fixed24_8.fromInt(15), 16, 16), // Enemy 1: Overlaps player (collision!)
+        try Sprite.init(Fixed24_8.fromInt(12), Fixed24_8.fromInt(12), 16, 16), // Enemy 2: Also overlaps
     };
     for (&enemies) |*e| {
         e.layer = Collision.layer(1);
@@ -77,8 +78,8 @@ test "checkOverlap finds matching colliding sprite" {
 
 test "checkOverlap skips self when target is in the same slice" {
     var pool = [_]Sprite{
-        Sprite.init(10, 10, 16, 16),
-        Sprite.init(50, 50, 16, 16),
+        try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16),
+        try Sprite.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(50), 16, 16),
     };
     // Testing pool[0] against the whole pool slice
     const hit = checkOverlap(&pool[0], &pool);
@@ -89,12 +90,12 @@ test "checkOverlap skips self when target is in the same slice" {
 test "checkOverlap layer mask filtering" {
     const Collision = @import("layer.zig").Collision;
 
-    var player = Sprite.init(10, 10, 16, 16);
+    var player = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16);
     player.layer = Collision.layer(0);
     player.mask = Collision.layer(1); // Only Enemy
 
     var items = [_]Sprite{
-        Sprite.init(10, 10, 16, 16), // Overlaps physically, but is Item (Layer 2)
+        try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16), // Overlaps physically, but is Item (Layer 2)
     };
     items[0].layer = Collision.layer(2);
     items[0].mask = Collision.layer(3);
@@ -117,9 +118,9 @@ test "checkAllOverlaps pairwise collision callbacks" {
     };
 
     var sprites = [_]Sprite{
-        Sprite.init(10, 10, 16, 16), // 0: Overlaps with 1
-        Sprite.init(15, 15, 16, 16), // 1: Overlaps with 0
-        Sprite.init(100, 100, 16, 16), // 2: Separated
+        try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16), // 0: Overlaps with 1
+        try Sprite.init(Fixed24_8.fromInt(15), Fixed24_8.fromInt(15), 16, 16), // 1: Overlaps with 0
+        try Sprite.init(Fixed24_8.fromInt(100), Fixed24_8.fromInt(100), 16, 16), // 2: Separated
     };
     for (&sprites) |*s| {
         s.layer = Collision.layer(0);

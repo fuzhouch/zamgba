@@ -1,6 +1,5 @@
 const std = @import("std");
 const hal = @import("zamgba-hal");
-const Color = @import("color.zig").Color;
 const physics = @import("physics/physics.zig");
 const AABB = physics.AABB;
 const Fixed24_8 = physics.Fixed24_8;
@@ -8,47 +7,26 @@ const CollisionMap = physics.CollisionMap;
 const CollisionMask = physics.CollisionMask;
 const Collision = physics.Collision;
 
+const gfx2d = @import("gfx2d/gfx2d.zig");
+const StaticTile = gfx2d.StaticTile;
+const AnimatedTiles = gfx2d.AnimatedTiles;
+const SpriteSheet = gfx2d.SpriteSheet;
+const AnimationMode = gfx2d.AnimationMode;
+const AnimationTag = gfx2d.AnimationTag;
+const TileError = gfx2d.TileError;
+
 pub const SpriteError = error{
     InvalidDimensions,
+    Unimplemented,
 };
 
-pub const BppMode = enum(u1) {
-    bpp4 = 0,
-    bpp8 = 1,
-};
-
-pub const AnimationDirection = enum(u2) {
-    forward = 0,
-    reverse = 1,
-    pingpong = 2,
-};
-
-pub const AnimationTag = struct {
-    name: []const u8,
-    from_frame: u16,
-    to_frame: u16,
-    direction: AnimationDirection = .forward,
-};
-
-pub const SpriteSheet = struct {
-    bpp: BppMode,
-    width: u16,
-    height: u16,
-    tile_count_per_frame: u16,
-    frame_count: u16,
-    palette: ?[]const u16 = null,
-    tiles: []const u8,
-    durations_ms: []const u16,
-    tags: []const AnimationTag,
-};
-
-pub const ShapeSize = struct {
+const ShapeSize = struct {
     shape: u16,
     size: u16,
 };
 
 /// Validates width and height against GBA hardware OBJ dimensions and returns Shape and Size bits.
-pub fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
+fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
     if (width == 8 and height == 8) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_0 };
     if (width == 16 and height == 16) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_1 };
     if (width == 32 and height == 32) return .{ .shape = hal.oam.Shape.SQUARE, .size = hal.oam.Size.SIZE_2 };
@@ -67,19 +45,6 @@ pub fn getShapeAndSize(width: u16, height: u16) SpriteError!ShapeSize {
     return SpriteError.InvalidDimensions;
 }
 
-fn colorToBgr555(color: anytype) u16 {
-    const T = @TypeOf(color);
-    if (T == u16) {
-        return color;
-    } else if (T == Color or T == *const Color) {
-        return color.toBgr555();
-    } else if (@hasDecl(T, "toBgr555")) {
-        return color.toBgr555();
-    } else {
-        @compileError("Expected u16 (BGR555) or engine.Color type.");
-    }
-}
-
 /// Result of collision check during movement.
 pub const CollisionResult = struct {
     collided_x: bool = false,
@@ -90,7 +55,7 @@ pub const CollisionResult = struct {
     }
 };
 
-/// High-level Sprite with unified AABB bounding box and velocity physics.
+/// High-level orthogonal Sprite: encapsulates AABB, velocity, collision layers, flips, and visibility.
 pub const Sprite = struct {
     aabb: AABB,
     velocity_x: Fixed24_8 = Fixed24_8.zero,
@@ -102,15 +67,6 @@ pub const Sprite = struct {
     /// 16-bit collision mask (layers this sprite interacts with)
     mask: CollisionMask = Collision.ALL,
 
-    /// Hardware tile index start
-    tile_index: u16 = 0,
-
-    /// Palette bank (0-15)
-    palette_bank: u8 = 0,
-
-    /// Color mode (4-bpp / 16-color vs 8-bpp / 256-color)
-    bpp: BppMode = .bpp4,
-
     /// Horizontal flip (face left / right)
     h_flip: bool = false,
 
@@ -119,24 +75,12 @@ pub const Sprite = struct {
 
     visible: bool = true,
 
-    /// Initialize a Sprite with integer pixel coordinates and dimensions.
-    pub fn init(x: i32, y: i32, width: u16, height: u16) Sprite {
-        return .{
-            .aabb = AABB.fromInt(x, y, width, height),
-        };
-    }
-
-    /// Initialize a Sprite with Fixed24_8 sub-pixel coordinates.
-    pub fn initFixed(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16) Sprite {
+    /// Initialize a Sprite with Fixed24_8 sub-pixel coordinates and validates GBA hardware sprite dimensions.
+    pub fn init(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16) SpriteError!Sprite {
+        _ = try getShapeAndSize(width, height);
         return .{
             .aabb = AABB.init(x, y, width, height),
         };
-    }
-
-    /// Initializes a sprite and verifies its width and height are valid GBA sprite dimensions.
-    pub fn initChecked(x: i32, y: i32, width: u16, height: u16) SpriteError!Sprite {
-        _ = try getShapeAndSize(width, height);
-        return init(x, y, width, height);
     }
 
     /// Check if this sprite can interact with another sprite based on 16-bit layer and mask filtering.
@@ -144,118 +88,166 @@ pub const Sprite = struct {
         return Collision.canInteract(self.layer, self.mask, other.layer, other.mask);
     }
 
+    /// Internal helper to advance and collide a single axis (X or Y).
+    fn moveAxis(self: *Sprite, collision_map: CollisionMap, axis: enum { x, y }) bool {
+        const vel = switch (axis) {
+            .x => self.velocity_x,
+            .y => self.velocity_y,
+        };
+        if (vel.raw == 0) return false;
+
+        const test_box = switch (axis) {
+            .x => AABB.init(self.aabb.x.add(vel), self.aabb.y, self.aabb.width, self.aabb.height),
+            .y => AABB.init(self.aabb.x, self.aabb.y.add(vel), self.aabb.width, self.aabb.height),
+        };
+
+        if (collision_map.isColliding(test_box)) {
+            switch (axis) {
+                .x => self.velocity_x = Fixed24_8.zero,
+                .y => self.velocity_y = Fixed24_8.zero,
+            }
+            return true;
+        } else {
+            switch (axis) {
+                .x => self.aabb.x = test_box.x,
+                .y => self.aabb.y = test_box.y,
+            }
+            return false;
+        }
+    }
+
     /// Move the sprite by its current velocity, checking and resolving collisions
     /// independently on X and Y axes against the CollisionMap.
     pub fn moveAndCollide(self: *Sprite, collision_map: CollisionMap) CollisionResult {
-        var result = CollisionResult{};
-
-        // 1. Move along X axis
-        if (self.velocity_x.raw != 0) {
-            const next_x = self.aabb.x.add(self.velocity_x);
-            const test_box_x = AABB.init(next_x, self.aabb.y, self.aabb.width, self.aabb.height);
-
-            if (next_x.raw < 0 or collision_map.isColliding(test_box_x)) {
-                result.collided_x = true;
-                self.velocity_x = Fixed24_8.zero;
-            } else {
-                self.aabb.x = next_x;
-            }
-        }
-
-        // 2. Move along Y axis
-        if (self.velocity_y.raw != 0) {
-            const next_y = self.aabb.y.add(self.velocity_y);
-            const test_box_y = AABB.init(self.aabb.x, next_y, self.aabb.width, self.aabb.height);
-
-            if (next_y.raw < 0 or collision_map.isColliding(test_box_y)) {
-                result.collided_y = true;
-                self.velocity_y = Fixed24_8.zero;
-            } else {
-                self.aabb.y = next_y;
-            }
-        }
-
-        return result;
-    }
-
-    /// Compiles the engine-level sprite into a hardware OAM attribute.
-    pub fn toOamAttr(self: *const Sprite) hal.oam.ObjAttr {
-        if (!self.visible) {
-            return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
-        }
-
-        const shape_size = getShapeAndSize(self.aabb.width, self.aabb.height) catch ShapeSize{
-            .shape = hal.oam.Shape.SQUARE,
-            .size = hal.oam.Size.SIZE_0,
-        };
-
-        const y_val: i32 = @intCast(self.aabb.y.toInt());
-        const x_val: i32 = @intCast(self.aabb.x.toInt());
-
-        const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
-        const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
-
-        const bpp_bit: u16 = if (self.bpp == .bpp8) (1 << 13) else 0;
-        const h_flip_bit: u16 = if (self.h_flip) (1 << 12) else 0;
-        const v_flip_bit: u16 = if (self.v_flip) (1 << 13) else 0;
-
-        const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
-        const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
-        const attr2: u16 = (self.tile_index & 0x03FF) | (@as(u16, self.palette_bank & 0x0F) << 12);
-
         return .{
-            .attr0 = attr0,
-            .attr1 = attr1,
-            .attr2 = attr2,
-            .fill = 0,
+            .collided_x = self.moveAxis(collision_map, .x),
+            .collided_y = self.moveAxis(collision_map, .y),
         };
-    }
-
-    /// Fills custom VRAM and PALRAM memory buffers with solid color tile graphics and palette entry.
-    pub fn fillSolidColorToBuffers(
-        self: *const Sprite,
-        vram_obj_base: []volatile u16,
-        palram_obj_base: []volatile u16,
-        color: anytype,
-    ) SpriteError!void {
-        _ = try getShapeAndSize(self.aabb.width, self.aabb.height);
-        const bgr15 = colorToBgr555(color);
-
-        const bank_offset = @as(usize, self.palette_bank & 0x0F) * 16;
-        if (bank_offset + 1 < palram_obj_base.len) {
-            palram_obj_base[bank_offset + 1] = bgr15;
-        }
-
-        const tile_word_offset = @as(usize, self.tile_index) * 16;
-        const total_tiles = (@as(usize, self.aabb.width) / 8) * (@as(usize, self.aabb.height) / 8);
-        const total_words = total_tiles * 16;
-
-        if (tile_word_offset + total_words <= vram_obj_base.len) {
-            for (0..total_words) |i| {
-                vram_obj_base[tile_word_offset + i] = 0x1111;
-            }
-        }
-    }
-
-    /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics for this sprite.
-    /// `color` can be an `engine.Color` or a 15-bit BGR555 `u16` (e.g. `hal.Color.RED`).
-    pub fn fillSolidColor(self: *const Sprite, color: anytype) SpriteError!void {
-        const obj_pal = hal.MemorySections.PALRAM + 256;
-        const obj_vram = hal.MemorySections.VRAM + 32768;
-
-        const pal_slice = obj_pal[0..256];
-        const vram_slice = obj_vram[0..16384];
-
-        try self.fillSolidColorToBuffers(vram_slice, pal_slice, color);
     }
 };
 
-test "SPR001: initChecked validates dimensions" {
-    const spr = try Sprite.initChecked(10, 20, 8, 8);
+/// Compiles an engine-level sprite and provided static tile into a hardware OAM attribute.
+/// Internal OAM attribute builder.
+///
+/// Design Decision:
+/// `Sprite` is a pure spatial/physics entity (position, velocity, AABB, flips, collision masks)
+/// and deliberately does NOT hold graphical tile metadata (tile_index, palette_bank, bpp).
+/// Conversely, `StaticTile` and `AnimatedTiles` only hold tile descriptors without spatial context.
+///
+/// GBA hardware OAM requires BOTH spatial bits (Attr0/Attr1) and graphical tile bits (Attr2).
+/// Therefore, `compileOamAttr` is kept module-private to enforce that only complete composite
+/// entities (`StaticSprite`, `AnimatedSprite`) expose public `toOamAttr()` methods to `engine.drawSprite()`.
+fn compileOamAttr(spr: *const Sprite, tile_attr: StaticTile) hal.oam.ObjAttr {
+    if (!spr.visible) {
+        return .{ .attr0 = 160, .attr1 = 0, .attr2 = 0, .fill = 0 };
+    }
+
+    const shape_size = getShapeAndSize(spr.aabb.width, spr.aabb.height) catch ShapeSize{
+        .shape = hal.oam.Shape.SQUARE,
+        .size = hal.oam.Size.SIZE_0,
+    };
+
+    const y_val: i32 = @intCast(spr.aabb.y.toInt());
+    const x_val: i32 = @intCast(spr.aabb.x.toInt());
+
+    const y_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(y_val)))) & 0x00FF;
+    const x_hw: u16 = @as(u16, @bitCast(@as(i16, @truncate(x_val)))) & 0x01FF;
+
+    const bpp_bit: u16 = if (tile_attr.bpp == .bpp8) (1 << 13) else 0;
+    const h_flip_bit: u16 = if (spr.h_flip) (1 << 12) else 0;
+    const v_flip_bit: u16 = if (spr.v_flip) (1 << 13) else 0;
+
+    const attr0: u16 = y_hw | (shape_size.shape << 14) | bpp_bit;
+    const attr1: u16 = x_hw | (shape_size.size << 14) | h_flip_bit | v_flip_bit;
+    const attr2: u16 = (tile_attr.tile_index & 0x03FF) | (@as(u16, tile_attr.palette_bank & 0x0F) << 12);
+
+    return .{
+        .attr0 = attr0,
+        .attr1 = attr1,
+        .attr2 = attr2,
+        .fill = 0,
+    };
+}
+
+/// Composite structure: Combines a Sprite with a StaticTile.
+pub const StaticSprite = struct {
+    sprite: Sprite,
+    tile: StaticTile = .{},
+
+    pub fn init(x: Fixed24_8, y: Fixed24_8, width: u16, height: u16, tile_attr: StaticTile) SpriteError!StaticSprite {
+        return .{
+            .sprite = try Sprite.init(x, y, width, height),
+            .tile = tile_attr,
+        };
+    }
+
+    pub fn toOamAttr(self: *const StaticSprite) hal.oam.ObjAttr {
+        return compileOamAttr(&self.sprite, self.tile);
+    }
+
+    /// Fills GBA OBJ VRAM and updates OBJ PALRAM with solid color tile graphics.
+    pub fn fillSolidColor(self: *const StaticSprite, color: gfx2d.Color) gfx2d.TileError!void {
+        return self.tile.fillSolidColor(self.sprite.aabb.width, self.sprite.aabb.height, color);
+    }
+};
+
+/// Composite structure: Combines a spatial Sprite with AnimatedTiles.
+pub const AnimatedSprite = struct {
+    sprite: Sprite,
+    tiles: AnimatedTiles,
+
+    /// Creates and initializes an animated sprite from a converted SpriteSheet and position.
+    pub fn init(sheet: *const SpriteSheet, mode: AnimationMode, x: Fixed24_8, y: Fixed24_8) (TileError || SpriteError)!AnimatedSprite {
+        const tiles = try AnimatedTiles.init(sheet, mode);
+        const spr = try Sprite.init(x, y, sheet.width, sheet.height);
+        return .{
+            .sprite = spr,
+            .tiles = tiles,
+        };
+    }
+
+    /// Releases any allocated VRAM slot back to the VramAllocator.
+    pub fn deinit(self: *AnimatedSprite) void {
+        self.tiles.deinit();
+    }
+
+    /// Selects an animation tag by name (e.g. "fly", "run", "idle").
+    pub fn setAnimation(self: *AnimatedSprite, tag_name: []const u8) TileError!void {
+        return self.tiles.setAnimation(tag_name);
+    }
+
+    /// Selects an animation tag by index without runtime string lookup.
+    pub fn setAnimationByIndex(self: *AnimatedSprite, tag_index: usize) TileError!void {
+        return self.tiles.setAnimationByIndex(tag_index);
+    }
+
+    /// Directly sets the current frame index.
+    pub fn setFrame(self: *AnimatedSprite, frame_index: usize) TileError!void {
+        return self.tiles.setFrame(frame_index);
+    }
+
+    /// Advances the animation frame timer by 1 tick (~16.6ms at 60Hz).
+    pub fn update(self: *AnimatedSprite) void {
+        self.tiles.update();
+    }
+
+    /// Compiles into a GBA hardware OAM attribute.
+    pub fn toOamAttr(self: *const AnimatedSprite) hal.oam.ObjAttr {
+        return compileOamAttr(&self.sprite, self.tiles.getTile());
+    }
+
+    /// Accesses the underlying Sprite component.
+    pub fn getSprite(self: *AnimatedSprite) *Sprite {
+        return &self.sprite;
+    }
+};
+
+test "SPR001: init validates dimensions" {
+    const spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 8, 8);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.width);
     try std.testing.expectEqual(@as(u16, 8), spr.aabb.height);
 
-    try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.initChecked(10, 20, 12, 12));
+    try std.testing.expectError(SpriteError.InvalidDimensions, Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 12, 12));
 }
 
 test "SPR002: getShapeAndSize valid dimensions" {
@@ -284,12 +276,11 @@ test "SPR003: getShapeAndSize invalid dimensions" {
     try std.testing.expectError(SpriteError.InvalidDimensions, getShapeAndSize(128, 128));
 }
 
-test "SPR004: toOamAttr encoding" {
-    var spr = Sprite.init(10, 20, 16, 32); // Vertical (shape 2, size 2)
-    spr.tile_index = 4;
-    spr.palette_bank = 2;
+test "SPR004: toOamAttr encoding with StaticTile" {
+    var spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 16, 32); // Vertical (shape 2, size 2)
+    const tile_attr = StaticTile{ .tile_index = 4, .palette_bank = 2, .bpp = .bpp4 };
 
-    const attr = spr.toOamAttr();
+    const attr = compileOamAttr(&spr, tile_attr);
     // attr0: Y=20 (0x14), shape=2 -> (2 << 14) | 20 = 0x8014
     try std.testing.expectEqual(@as(u16, 0x8014), attr.attr0);
     // attr1: X=10 (0x0A), size=2 -> (2 << 14) | 10 = 0x800A
@@ -298,70 +289,7 @@ test "SPR004: toOamAttr encoding" {
     try std.testing.expectEqual(@as(u16, 0x2004), attr.attr2);
 }
 
-test "SPR010: toOamAttr horizontal and vertical flip encoding" {
-    var spr = Sprite.init(10, 20, 16, 16);
-    spr.h_flip = true;
-    spr.v_flip = true;
-
-    const attr = spr.toOamAttr();
-    // attr1: size=1 (1 << 14), h_flip=1 (1 << 12), v_flip=1 (1 << 13), X=10
-    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
-    try std.testing.expectEqual(expected_attr1, attr.attr1);
-}
-
-test "SPR011: toOamAttr 8-bpp color mode encoding" {
-    var spr = Sprite.init(10, 20, 32, 32);
-    spr.bpp = .bpp8;
-
-    const attr = spr.toOamAttr();
-    // attr0: shape=0 (0 << 14), bpp8=1 (1 << 13), Y=20
-    const expected_attr0: u16 = 20 | (1 << 13);
-    try std.testing.expectEqual(expected_attr0, attr.attr0);
-}
-
-test "SPR005: colorToBgr555 supports u16, Color, and custom duck-typed structs" {
-    // 1. u16 (e.g., hal.Color)
-    const raw_color: u16 = hal.Color.RED;
-    try std.testing.expectEqual(hal.Color.RED, colorToBgr555(raw_color));
-
-    // 2. engine.Color struct value
-    const eng_color = Color.RED;
-    try std.testing.expectEqual(hal.Color.RED, colorToBgr555(eng_color));
-
-    // 3. Custom struct with a toBgr555() method (duck typing)
-    const CustomColor = struct {
-        pub fn toBgr555(self: @This()) u16 {
-            _ = self;
-            return 0x1234;
-        }
-    };
-    const custom = CustomColor{};
-    try std.testing.expectEqual(@as(u16, 0x1234), colorToBgr555(custom));
-}
-
-test "SPR006: fillSolidColorToBuffers mock buffer" {
-    var mock_vram: [1024]u16 = [_]u16{0} ** 1024;
-    var mock_palram: [256]u16 = [_]u16{0} ** 256;
-
-    var spr = Sprite.init(0, 0, 16, 8); // Horizontal (shape 1, size 0): 2 tiles = 32 u16 words
-    spr.tile_index = 2;
-    spr.palette_bank = 1;
-
-    try spr.fillSolidColorToBuffers(&mock_vram, &mock_palram, Color.RED);
-
-    // Palette bank 1, color index 1 -> offset (1 * 16 + 1) = 17
-    try std.testing.expectEqual(hal.Color.RED, mock_palram[17]);
-
-    // Tile index 2 -> offset (2 * 16) = 32 words. 2 tiles = 32 words.
-    for (32..64) |i| {
-        try std.testing.expectEqual(@as(u16, 0x1111), mock_vram[i]);
-    }
-    try std.testing.expectEqual(@as(u16, 0), mock_vram[31]);
-    try std.testing.expectEqual(@as(u16, 0), mock_vram[64]);
-}
-
 fn mockWallAtTile3_0(tx: u16, ty: u16) bool {
-    // Tile (3, 0) is at pixel x: [24, 32)
     return tx == 3 and ty == 0;
 }
 
@@ -369,7 +297,7 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     const map = CollisionMap.init(.size_256x256, mockWallAtTile3_0, .solid);
 
     // Sprite at x=8, y=0, size 8x8 (tile 1, 0)
-    var spr = Sprite.init(8, 0, 8, 8);
+    var spr = try Sprite.init(Fixed24_8.fromInt(8), Fixed24_8.fromInt(0), 8, 8);
     spr.velocity_x = Fixed24_8.fromInt(8); // Move right by 8 pixels per step
 
     // Step 1: Moves from x=8 to x=16 (tile 2) -> Clear
@@ -382,9 +310,7 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
     try std.testing.expect(res.collided_x);
     try std.testing.expect(!res.collided_y);
     try std.testing.expect(res.hasCollided());
-    // Position should NOT have advanced into the wall
     try std.testing.expectEqual(@as(i32, 16), spr.aabb.x.toInt());
-    // Velocity on X is stopped (zeroed out)
     try std.testing.expectEqual(Fixed24_8.zero.raw, spr.velocity_x.raw);
 
     // Step 3: Test negative velocity (moving left)
@@ -395,9 +321,9 @@ test "SPR007: Sprite moveAndCollide stops against map obstacles" {
 }
 
 test "SPR008: Sprite collision via AABB" {
-    const spr1 = Sprite.init(10, 10, 16, 16);
-    const spr2 = Sprite.init(20, 20, 16, 16);
-    const spr3 = Sprite.init(50, 50, 16, 16);
+    const spr1 = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(10), 16, 16);
+    const spr2 = try Sprite.init(Fixed24_8.fromInt(20), Fixed24_8.fromInt(20), 16, 16);
+    const spr3 = try Sprite.init(Fixed24_8.fromInt(50), Fixed24_8.fromInt(50), 16, 16);
 
     try std.testing.expect(spr1.aabb.isColliding(spr2.aabb));
     try std.testing.expect(spr1.aabb.collidesWith(spr2.aabb));
@@ -405,15 +331,15 @@ test "SPR008: Sprite collision via AABB" {
 }
 
 test "SPR009: Sprite layer and mask filtering" {
-    var player = Sprite.init(0, 0, 16, 16);
+    var player = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 16, 16);
     player.layer = Collision.layer(0); // Layer 0: Player
     player.mask = Collision.layer(1); // Mask: Only Enemy (Layer 1)
 
-    var enemy = Sprite.init(0, 0, 16, 16);
+    var enemy = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 16, 16);
     enemy.layer = Collision.layer(1); // Layer 1: Enemy
     enemy.mask = Collision.layer(0); // Mask: Only Player (Layer 0)
 
-    var item = Sprite.init(0, 0, 8, 8);
+    var item = try Sprite.init(Fixed24_8.fromInt(0), Fixed24_8.fromInt(0), 8, 8);
     item.layer = Collision.layer(2); // Layer 2: Item
     item.mask = Collision.layer(3); // Mask: Layer 3
 
@@ -424,4 +350,160 @@ test "SPR009: Sprite layer and mask filtering" {
     // Player and Item cannot collide (masks do not match)
     try std.testing.expect(!player.canCollideWith(&item));
     try std.testing.expect(!item.canCollideWith(&player));
+}
+
+test "SPR010: toOamAttr horizontal and vertical flip encoding" {
+    var spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 16, 16);
+    spr.h_flip = true;
+    spr.v_flip = true;
+    const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp4 };
+
+    const attr = compileOamAttr(&spr, tile_attr);
+    const expected_attr1: u16 = 10 | (1 << 14) | (1 << 12) | (1 << 13);
+    try std.testing.expectEqual(expected_attr1, attr.attr1);
+}
+
+test "SPR011: toOamAttr 8-bpp color mode encoding" {
+    const spr = try Sprite.init(Fixed24_8.fromInt(10), Fixed24_8.fromInt(20), 32, 32);
+    const tile_attr = StaticTile{ .tile_index = 0, .palette_bank = 0, .bpp = .bpp8 };
+
+    const attr = compileOamAttr(&spr, tile_attr);
+    const expected_attr0: u16 = 20 | (1 << 13);
+    try std.testing.expectEqual(expected_attr0, attr.attr0);
+}
+
+test "SPR013: StaticSprite composition and toOamAttr output" {
+    const static_spr = try StaticSprite.init(Fixed24_8.fromInt(15), Fixed24_8.fromInt(25), 32, 16, .{
+        .tile_index = 12,
+        .palette_bank = 4,
+        .bpp = .bpp4,
+    });
+
+    const attr = static_spr.toOamAttr();
+    // 32x16 Horizontal: shape=1, size=2 -> attr0 has (1 << 14) | 25, attr1 has (2 << 14) | 15
+    try std.testing.expectEqual(@as(u16, (1 << 14) | 25), attr.attr0);
+    try std.testing.expectEqual(@as(u16, (2 << 14) | 15), attr.attr1);
+    try std.testing.expectEqual(@as(u16, (4 << 12) | 12), attr.attr2);
+}
+
+test "SPR014: StaticSprite composition and toOamAttr with custom palette bank" {
+    const solid_spr = try StaticSprite.init(Fixed24_8.fromInt(5), Fixed24_8.fromInt(10), 8, 8, .{
+        .tile_index = 1,
+        .palette_bank = 2,
+    });
+
+    try std.testing.expectEqual(@as(u16, 1), solid_spr.tile.tile_index);
+    try std.testing.expectEqual(@as(u4, 2), solid_spr.tile.palette_bank);
+
+    const attr = solid_spr.toOamAttr();
+    try std.testing.expectEqual(@as(u16, 10), attr.attr0);
+    try std.testing.expectEqual(@as(u16, 5), attr.attr1);
+    try std.testing.expectEqual(@as(u16, (2 << 12) | 1), attr.attr2);
+}
+
+test "ANI007: AnimatedSprite composition and toOamAttr output" {
+    const dummy_sheet = SpriteSheet{
+        .bpp = .bpp4,
+        .width = 16,
+        .height = 16,
+        .tile_count_per_frame = 4,
+        .frame_count = 2,
+        .tiles = &[_]u8{0} ** 256,
+        .durations_ms = &[_]u16{ 100, 100 },
+        .tags = &[_]AnimationTag{
+            .{ .name = "idle", .from_frame = 0, .to_frame = 1, .direction = .forward },
+        },
+    };
+
+    var anim_spr = try AnimatedSprite.init(&dummy_sheet, .static, Fixed24_8.fromInt(20), Fixed24_8.fromInt(30));
+    defer anim_spr.deinit();
+
+    try anim_spr.setAnimation("idle");
+    try std.testing.expectError(TileError.TagNotFound, anim_spr.setAnimation("non_existent"));
+
+    try anim_spr.setAnimationByIndex(0);
+    try std.testing.expectError(TileError.TagNotFound, anim_spr.setAnimationByIndex(5));
+
+    try anim_spr.setFrame(1);
+    try std.testing.expectError(TileError.InvalidFrameIndex, anim_spr.setFrame(10));
+
+    const spr = anim_spr.getSprite();
+    spr.h_flip = true;
+
+    const attr = anim_spr.toOamAttr();
+    try std.testing.expectEqual(@as(u16, 30), attr.attr0 & 0x00FF);
+    try std.testing.expectEqual(@as(u16, 20 | (1 << 14) | (1 << 12)), attr.attr1);
+}
+
+fn mockAllPassable(_: u16, _: u16) bool {
+    return false;
+}
+
+test "SPR015: moveAndCollide boundary handling in all 4 directions across solid and empty maps" {
+    const map_solid = CollisionMap.init(.size_256x256, mockAllPassable, .solid);
+    const map_empty = CollisionMap.init(.size_256x256, mockAllPassable, .empty);
+
+    // 1. Move Left across boundary x=0 (x: 4 -> -4, span [-4, 4))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(4), Fixed24_8.fromInt(64), 8, 8);
+        spr_solid.velocity_x = Fixed24_8.fromInt(-8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_x);
+        try std.testing.expectEqual(@as(i32, 4), spr_solid.aabb.x.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_x.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(4), Fixed24_8.fromInt(64), 8, 8);
+        spr_empty.velocity_x = Fixed24_8.fromInt(-8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_x);
+        try std.testing.expectEqual(@as(i32, -4), spr_empty.aabb.x.toInt());
+    }
+
+    // 2. Move Right across boundary x=256 (x: 248 -> 256, span [256, 264))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(248), Fixed24_8.fromInt(64), 8, 8);
+        spr_solid.velocity_x = Fixed24_8.fromInt(8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_x);
+        try std.testing.expectEqual(@as(i32, 248), spr_solid.aabb.x.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_x.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(248), Fixed24_8.fromInt(64), 8, 8);
+        spr_empty.velocity_x = Fixed24_8.fromInt(8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_x);
+        try std.testing.expectEqual(@as(i32, 256), spr_empty.aabb.x.toInt());
+    }
+
+    // 3. Move Top across boundary y=0 (y: 4 -> -4, span [-4, 4))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(4), 8, 8);
+        spr_solid.velocity_y = Fixed24_8.fromInt(-8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_y);
+        try std.testing.expectEqual(@as(i32, 4), spr_solid.aabb.y.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_y.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(4), 8, 8);
+        spr_empty.velocity_y = Fixed24_8.fromInt(-8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_y);
+        try std.testing.expectEqual(@as(i32, -4), spr_empty.aabb.y.toInt());
+    }
+
+    // 4. Move Bottom across boundary y=256 (y: 248 -> 256, span [256, 264))
+    {
+        var spr_solid = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(248), 8, 8);
+        spr_solid.velocity_y = Fixed24_8.fromInt(8);
+        const res_solid = spr_solid.moveAndCollide(map_solid);
+        try std.testing.expect(res_solid.collided_y);
+        try std.testing.expectEqual(@as(i32, 248), spr_solid.aabb.y.toInt());
+        try std.testing.expectEqual(Fixed24_8.zero.raw, spr_solid.velocity_y.raw);
+
+        var spr_empty = try Sprite.init(Fixed24_8.fromInt(64), Fixed24_8.fromInt(248), 8, 8);
+        spr_empty.velocity_y = Fixed24_8.fromInt(8);
+        const res_empty = spr_empty.moveAndCollide(map_empty);
+        try std.testing.expect(!res_empty.collided_y);
+        try std.testing.expectEqual(@as(i32, 256), spr_empty.aabb.y.toInt());
+    }
 }
