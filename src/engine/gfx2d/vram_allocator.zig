@@ -226,6 +226,44 @@ test "VRM002: alloc single 8x8 4bpp sprite (1 unit)" {
     try std.testing.expectEqual(@as(u16, 0), a1.tile_index);
     try std.testing.expectEqual(@as(u16, 1), a1.tile_count);
     try std.testing.expectEqual(@as(u32, 0), a1.byte_offset);
+
+    // Validate block splitting when allocating 1 single block
+    try std.testing.expectEqual(@as(i16, NULL_INDEX), free_lists[10]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 2), free_lists[9]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 4), free_lists[8]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 8), free_lists[7]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 16), free_lists[6]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 32), free_lists[5]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 64), free_lists[4]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 128), free_lists[3]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 256), free_lists[2]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 512), free_lists[1]);
+    try std.testing.expectEqual(@as(i16, hal.specs.Tile.TOTAL_OBJ_TILES / 1024), free_lists[0]);
+    // Meanwhile, nodes contains allocated buffer
+    try std.testing.expectEqual(false, nodes[0].is_free);
+    try std.testing.expectEqual(0, nodes[0].order);
+    try std.testing.expectEqual(NULL_INDEX, nodes[0].prev);
+    try std.testing.expectEqual(NULL_INDEX, nodes[0].next);
+
+    const allocated_idx = [_]usize{ 1, 2, 4, 8, 16, 32, 64, 128, 256, 512 };
+    const allocated_order = [_]u4{ 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    for (allocated_idx, allocated_order) |i, o| {
+        try std.testing.expectEqual(true, nodes[i].is_free);
+        try std.testing.expectEqual(o, nodes[i].order);
+        try std.testing.expectEqual(NULL_INDEX, nodes[i].prev);
+        try std.testing.expectEqual(NULL_INDEX, nodes[i].next);
+    }
+
+    // Now free the allocated block. The status should be reverted.
+    try free(a1);
+    try std.testing.expectEqual(@as(i16, 0), free_lists[10]);
+    for (0..9) |i| {
+        try std.testing.expectEqual(@as(i16, NULL_INDEX), free_lists[i]);
+    }
+    try std.testing.expectEqual(true, nodes[0].is_free);
+    try std.testing.expectEqual(10, nodes[0].order);
+    try std.testing.expectEqual(NULL_INDEX, nodes[0].prev);
+    try std.testing.expectEqual(NULL_INDEX, nodes[0].next);
 }
 
 test "VRM003: alloc 32x32 8bpp sprite (32 units)" {
