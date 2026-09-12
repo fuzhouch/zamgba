@@ -204,4 +204,5 @@ fn callUserMain() void {
 test {
     _ = @import("dma.zig");
     _ = @import("display.zig");
+    _ = @import("oam.zig");
 }

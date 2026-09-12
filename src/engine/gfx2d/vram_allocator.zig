@@ -2,10 +2,10 @@ const std = @import("std");
 const hal = @import("zamgba-hal");
 const specs = hal.specs;
 
+pub const SpriteSize = hal.oam.SpriteSize;
+
 pub const VramError = error{
     OutOfVram,
-    InvalidSpriteSize,
-    InvalidAlignment,
     BlockNotAllocated,
 };
 
@@ -96,21 +96,9 @@ pub fn reset() void {
     is_initialized = true;
 }
 
-/// Calculate the power-of-2 32-byte tile slot units required for a given sprite dimension and bit depth.
-fn calculateRequiredUnits(width: u16, height: u16, bpp: hal.specs.BppMode) VramError!u16 {
-    if (width == 0 or height == 0 or width % specs.Tile.WIDTH_PIXELS != 0 or height % specs.Tile.HEIGHT_PIXELS != 0) {
-        return error.InvalidSpriteSize;
-    }
-    const pixels: u32 = @as(u32, width) * @as(u32, height);
-    return switch (bpp) {
-        .bpp4 => @as(u16, @intCast(pixels / specs.Tile.PIXEL_COUNT)),
-        .bpp8 => @as(u16, @intCast(pixels / (specs.Tile.PIXEL_COUNT / 2))),
-    };
-}
-
-/// Allocates a contiguous VRAM block suitable for a sprite with given dimensions and bit depth.
-pub fn alloc(width: u16, height: u16, bpp: hal.specs.BppMode) VramError!VramAllocation {
-    const units = try calculateRequiredUnits(width, height, bpp);
+/// Allocates a contiguous VRAM block suitable for a sprite with given SpriteSize and bit depth.
+pub fn alloc(size: SpriteSize, bpp: hal.specs.BppMode) VramError!VramAllocation {
+    const units = size.tileCount() << @intFromEnum(bpp);
     return allocUnits(units);
 }
 
@@ -202,27 +190,29 @@ pub fn getFreeTileCount() u16 {
     return free_tile_count;
 }
 
-test "VRM001: calculateRequiredUnits for 4bpp and 8bpp sizes" {
-    // 4-bpp sprites (32 bytes / 8x8 tile)
-    try std.testing.expectEqual(@as(u16, 1), try calculateRequiredUnits(8, 8, .bpp4));
-    try std.testing.expectEqual(@as(u16, 4), try calculateRequiredUnits(16, 16, .bpp4));
-    try std.testing.expectEqual(@as(u16, 16), try calculateRequiredUnits(32, 32, .bpp4));
-    try std.testing.expectEqual(@as(u16, 64), try calculateRequiredUnits(64, 64, .bpp4));
+test "VRM001: SpriteSize tileCount and fromDimensions" {
+    // 4-bpp / 8-bpp tile unit calculations
+    try std.testing.expectEqual(@as(u16, 1), SpriteSize.size_8x8.tileCount() << @intFromEnum(hal.specs.BppMode.bpp4));
+    try std.testing.expectEqual(@as(u16, 4), SpriteSize.size_16x16.tileCount() << @intFromEnum(hal.specs.BppMode.bpp4));
+    try std.testing.expectEqual(@as(u16, 16), SpriteSize.size_32x32.tileCount() << @intFromEnum(hal.specs.BppMode.bpp4));
+    try std.testing.expectEqual(@as(u16, 64), SpriteSize.size_64x64.tileCount() << @intFromEnum(hal.specs.BppMode.bpp4));
 
-    // 8-bpp sprites (64 bytes / 8x8 tile = 2 slot units)
-    try std.testing.expectEqual(@as(u16, 2), try calculateRequiredUnits(8, 8, .bpp8));
-    try std.testing.expectEqual(@as(u16, 8), try calculateRequiredUnits(16, 16, .bpp8));
-    try std.testing.expectEqual(@as(u16, 32), try calculateRequiredUnits(32, 32, .bpp8));
-    try std.testing.expectEqual(@as(u16, 128), try calculateRequiredUnits(64, 64, .bpp8));
+    try std.testing.expectEqual(@as(u16, 2), SpriteSize.size_8x8.tileCount() << @intFromEnum(hal.specs.BppMode.bpp8));
+    try std.testing.expectEqual(@as(u16, 8), SpriteSize.size_16x16.tileCount() << @intFromEnum(hal.specs.BppMode.bpp8));
+    try std.testing.expectEqual(@as(u16, 32), SpriteSize.size_32x32.tileCount() << @intFromEnum(hal.specs.BppMode.bpp8));
+    try std.testing.expectEqual(@as(u16, 128), SpriteSize.size_64x64.tileCount() << @intFromEnum(hal.specs.BppMode.bpp8));
 
-    // Invalid unaligned sizes
-    try std.testing.expectError(error.InvalidSpriteSize, calculateRequiredUnits(7, 8, .bpp4));
-    try std.testing.expectError(error.InvalidSpriteSize, calculateRequiredUnits(0, 16, .bpp4));
+    // fromDimensions tests
+    try std.testing.expectEqual(SpriteSize.size_8x8, try SpriteSize.fromDimensions(8, 8));
+    try std.testing.expectEqual(SpriteSize.size_16x16, try SpriteSize.fromDimensions(16, 16));
+    try std.testing.expectEqual(SpriteSize.size_64x32, try SpriteSize.fromDimensions(64, 32));
+    try std.testing.expectError(error.InvalidSpriteSize, SpriteSize.fromDimensions(7, 8));
+    try std.testing.expectError(error.InvalidSpriteSize, SpriteSize.fromDimensions(0, 16));
 }
 
 test "VRM002: alloc single 8x8 4bpp sprite (1 unit)" {
     reset();
-    const a1 = try alloc(8, 8, .bpp4);
+    const a1 = try alloc(.size_8x8, .bpp4);
     try std.testing.expectEqual(@as(u16, 0), a1.tile_index);
     try std.testing.expectEqual(@as(u16, 1), a1.tile_count);
     try std.testing.expectEqual(@as(u32, 0), a1.byte_offset);
@@ -268,7 +258,7 @@ test "VRM002: alloc single 8x8 4bpp sprite (1 unit)" {
 
 test "VRM003: alloc 32x32 8bpp sprite (32 units)" {
     reset();
-    const a1 = try alloc(32, 32, .bpp8);
+    const a1 = try alloc(.size_32x32, .bpp8);
     try std.testing.expectEqual(@as(u16, 0), a1.tile_index);
     try std.testing.expectEqual(@as(u16, 32), a1.tile_count);
     try std.testing.expectEqual(@as(u32, 0), a1.byte_offset);
@@ -276,8 +266,8 @@ test "VRM003: alloc 32x32 8bpp sprite (32 units)" {
 
 test "VRM004: buddy splitting and merging on free" {
     reset();
-    const a1 = try alloc(16, 16, .bpp4); // 4 units (index 0..3)
-    const a2 = try alloc(16, 16, .bpp4); // 4 units (index 4..7)
+    const a1 = try alloc(.size_16x16, .bpp4); // 4 units (index 0..3)
+    const a2 = try alloc(.size_16x16, .bpp4); // 4 units (index 4..7)
 
     try std.testing.expectEqual(@as(u16, 0), a1.tile_index);
     try std.testing.expectEqual(@as(u16, 4), a2.tile_index);
@@ -293,16 +283,16 @@ test "VRM005: OutOfVram error when memory exhausted" {
     // 64x64 8-bpp sprite takes 128 units. 8 such sprites consume 8 * 128 = 1024 units (100% VRAM).
     var i: usize = 0;
     while (i < 8) : (i += 1) {
-        _ = try alloc(64, 64, .bpp8);
+        _ = try alloc(.size_64x64, .bpp8);
     }
 
     // 9th allocation must fail
-    try std.testing.expectError(error.OutOfVram, alloc(8, 8, .bpp4));
+    try std.testing.expectError(error.OutOfVram, alloc(.size_8x8, .bpp4));
 }
 
 test "VRM006: free invalid block or double-free returns BlockNotAllocated" {
     reset();
-    const a1 = try alloc(16, 16, .bpp4);
+    const a1 = try alloc(.size_16x16, .bpp4);
     try free(a1);
 
     // Double-free must fail

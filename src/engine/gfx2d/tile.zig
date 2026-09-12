@@ -118,7 +118,8 @@ pub const AnimatedTiles = struct {
 
         var vram_alloc: ?vram_allocator.VramAllocation = null;
         if (mode == .streaming) {
-            const alloc_res = vram_allocator.alloc(sheet.width, sheet.height, sheet.bpp) catch return error.OutOfVram;
+            const size = hal.oam.SpriteSize.fromDimensions(sheet.width, sheet.height) catch return error.InvalidDimensions;
+            const alloc_res = vram_allocator.alloc(size, sheet.bpp) catch return error.OutOfVram;
             vram_alloc = alloc_res;
         }
 
