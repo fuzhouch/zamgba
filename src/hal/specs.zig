@@ -121,4 +121,5 @@ pub const Tile = struct {
     pub const BYTES_8BPP: usize = PIXEL_COUNT; // 64 bytes
     pub const WORDS_8BPP: usize = BYTES_8BPP / 2; // 32 words (u16)
     pub const SOLID_COLOR_1_PATTERN_4BPP: u16 = 0x1111;
+    pub const TOTAL_OBJ_TILES: u16 = MemorySections.OBJ_VRAM_SIZE_BYTES / BYTES_4BPP; // 1024
 };
