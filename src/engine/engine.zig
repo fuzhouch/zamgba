@@ -1,4 +1,3 @@
-const builtin = @import("builtin");
 const hal = @import("zamgba-hal");
 
 pub const Sprite = @import("sprite.zig").Sprite;
@@ -15,7 +14,7 @@ pub var is_initialized: bool = false;
 
 /// Initializes the global engine state, resets subsystem allocators and queues, and configures hardware display registers.
 pub fn initHardware() void {
-    if (builtin.target.os.tag == .freestanding) {
+    if (hal.specs.is_gba_target) {
         hal.display.setMode0();
         hal.display.enableSpriteLayer();
         hal.display.setSpriteMapping(.linear_1d);
